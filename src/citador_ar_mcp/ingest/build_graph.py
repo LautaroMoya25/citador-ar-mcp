@@ -40,9 +40,12 @@ from citador_ar_mcp.domain.citation import (
 )
 from citador_ar_mcp.domain.treatment import Method, Opinion, Treatment
 from citador_ar_mcp.ingest.fetch import (
+    PAGE_SIZE,
     UNKNOWN_YEAR,
     CsjnClient,
+    SessionExpiredError,
     Sumario,
+    parse_sumario,
     source_url_for,
 )
 
@@ -178,7 +181,80 @@ def _ruling_row(s: Sumario, text_status: str = "unavailable") -> dict[str, Any]:
     }
 
 
-async def crawl(conn: sqlite3.Connection, volumes: range, *, delay: float = 0.5) -> tuple[int, int]:
+def store_sumario(conn: sqlite3.Connection, s: Sumario) -> int:
+    """Write one sumario and the edges it declares. Returns the edge count.
+
+    Self-references are dropped. ``linksCitantes`` lists the rulings that cite
+    this *sumario*, and a ruling with several sumarios can appear among its own
+    citers -- which is true and useless: a self-edge says nothing about whether
+    a precedent is still good law, and the schema refuses it.
+    """
+    upsert_ruling(conn, _ruling_row(s))
+    upsert_alias(conn, str(s.ruling_id), str(s.ruling_id), "fallos", "api")
+    if s.caption:
+        upsert_alias(conn, normalize_caption(s.caption), str(s.ruling_id), "caption", "api")
+    if s.expediente and (exp := normalize_expediente(s.expediente)):
+        upsert_alias(conn, exp, str(s.ruling_id), "expediente", "api")
+
+    edges = 0
+    for citing in s.citing:
+        if citing == s.ruling_id:
+            continue
+        # The citing ruling may not be crawled yet; the foreign key needs a
+        # node, so insert a stub a later pass will fill in.
+        conn.execute(
+            "INSERT OR IGNORE INTO rulings (id, volume, page, caption, "
+            "decided_year, source_url, text_status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(citing),
+                citing.volume,
+                citing.page,
+                citing.human,
+                UNKNOWN_YEAR,
+                source_url_for(citing),
+                "unavailable",
+            ),
+        )
+        upsert_citation(
+            conn,
+            {
+                "citing_id": str(citing),
+                "cited_id": str(s.ruling_id),
+                "treatment": Treatment.MENTIONED.value,
+                "opinion": Opinion.UNKNOWN.value,
+                "confidence": UNCLASSIFIED_CONFIDENCE,
+                "quote": (
+                    f"Referencia publicada por la CSJN en el sumario {s.sumario_id} "
+                    f"de {s.ruling_id.human}. Sin clasificar: falta el pasaje."
+                ),
+                "method": Method.RULE.value,
+                "sumario_id": s.sumario_id,
+            },
+        )
+        edges += 1
+    return edges
+
+
+def done_volumes(conn: sqlite3.Connection) -> set[int]:
+    """Tomos already crawled, from the graph's own metadata."""
+    row = conn.execute("SELECT value FROM corpus_meta WHERE key = 'crawled_tomos'").fetchone()
+    if not row or not row[0]:
+        return set()
+    return {int(v) for v in row[0].split(",") if v.strip().isdigit()}
+
+
+def mark_done(conn: sqlite3.Connection, volume: int) -> None:
+    done = done_volumes(conn) | {volume}
+    set_meta(conn, crawled_tomos=",".join(str(v) for v in sorted(done)))
+
+
+async def crawl(
+    conn: sqlite3.Connection,
+    volumes: range,
+    *,
+    delay: float = 0.5,
+    resume: bool = True,
+) -> tuple[int, int]:
     """Crawl a range of tomos into the graph.
 
     Edges come from ``linksCitantes``, which the CSJN publishes per sumario. That
@@ -187,63 +263,67 @@ async def crawl(conn: sqlite3.Connection, volumes: range, *, delay: float = 0.5)
 
     The placeholder quote records where the assertion came from rather than
     pretending to be a passage, so nothing downstream can mistake it for one.
+
+    Three things make "it will die halfway" survivable, and the first full run
+    proved all three were needed. It died on tomo 330 -- 350 requests and about a
+    gigabyte in -- on a single self-citing sumario, and left an empty database:
+
+    * a row the schema refuses is logged and skipped, not fatal to the crawl;
+    * the transaction commits per page rather than per tomo, so a crash costs
+      ten sumarios rather than the three thousand five hundred of tomo 330;
+    * completed tomos are recorded in ``corpus_meta`` and skipped on re-run, so
+      restarting does not re-download six gigabytes.
     """
     rulings = edges = 0
+    already = done_volumes(conn) if resume else set()
+    if already:
+        log.info("ya relevados, se saltean: %s", ",".join(str(v) for v in sorted(already)))
+
     async with CsjnClient(delay=delay) as csjn:
         for volume in volumes:
+            if volume in already:
+                continue
             try:
-                sumarios = await csjn.sumarios(volume)
+                total = await csjn.search(volume)
             except Exception:
-                log.exception("tomo %s: falló, se saltea y se puede reanudar", volume)
+                log.exception("tomo %s: no pude abrir la búsqueda, se saltea", volume)
                 continue
 
-            for s in sumarios:
-                upsert_ruling(conn, _ruling_row(s))
-                upsert_alias(conn, str(s.ruling_id), str(s.ruling_id), "fallos", "api")
-                if s.caption:
-                    upsert_alias(
-                        conn, normalize_caption(s.caption), str(s.ruling_id), "caption", "api"
-                    )
-                if s.expediente and (exp := normalize_expediente(s.expediente)):
-                    upsert_alias(conn, exp, str(s.ruling_id), "expediente", "api")
-                rulings += 1
+            got = 0
+            for start in range(0, total, PAGE_SIZE):
+                try:
+                    batch = await csjn.page(start)
+                except SessionExpiredError:
+                    await csjn.search(volume)
+                    batch = await csjn.page(start)
+                except Exception:
+                    log.exception("tomo %s: falló la página %s, se saltea", volume, start)
+                    continue
+                if not batch:
+                    break
 
-                for citing in s.citing:
-                    # The citing ruling may not be crawled yet; the foreign key
-                    # needs a node, so insert a stub the later pass will fill in.
-                    conn.execute(
-                        "INSERT OR IGNORE INTO rulings (id, volume, page, caption, "
-                        "decided_year, source_url, text_status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (
-                            str(citing),
-                            citing.volume,
-                            citing.page,
-                            citing.human,
-                            UNKNOWN_YEAR,
-                            source_url_for(citing),
-                            "unavailable",
-                        ),
-                    )
-                    upsert_citation(
-                        conn,
-                        {
-                            "citing_id": str(citing),
-                            "cited_id": str(s.ruling_id),
-                            "treatment": Treatment.MENTIONED.value,
-                            "opinion": Opinion.UNKNOWN.value,
-                            "confidence": UNCLASSIFIED_CONFIDENCE,
-                            "quote": (
-                                f"Referencia publicada por la CSJN en el sumario {s.sumario_id} "
-                                f"de {s.ruling_id.human}. Sin clasificar: falta el pasaje."
-                            ),
-                            "method": Method.RULE.value,
-                            "sumario_id": s.sumario_id,
-                        },
-                    )
-                    edges += 1
+                for raw in batch:
+                    try:
+                        s = parse_sumario(raw)
+                    except Exception:
+                        log.warning("tomo %s: sumario ilegible %s", volume, raw.get("id"))
+                        continue
+                    try:
+                        edges += store_sumario(conn, s)
+                    except sqlite3.IntegrityError as exc:
+                        # One malformed row must not cost the run. Skip it and say
+                        # which one, so it can be looked at later.
+                        log.warning("sumario %s rechazado por el esquema: %s", s.sumario_id, exc)
+                        continue
+                    rulings += 1
+                    got += 1
 
+                conn.commit()
+                await asyncio.sleep(delay)
+
+            mark_done(conn, volume)
             conn.commit()
-            log.info("tomo %s: %s sumarios, %s aristas acumuladas", volume, len(sumarios), edges)
+            log.info("tomo %s: %s/%s sumarios, %s aristas acumuladas", volume, got, total, edges)
 
     set_meta(
         conn,
@@ -434,7 +514,28 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         conn.close()
 
-    log.info("grafo en %s: %s fallos, %s aristas", args.db, rulings, edges)
+    # Counted from the graph, not from the loop. The crawl iterates sumarios and
+    # a ruling has many, so a loop counter would report the corpus several times
+    # larger than it is.
+    conn = sqlite3.connect(args.db)
+    try:
+        nodes = conn.execute("SELECT count(*) FROM rulings").fetchone()[0]
+        arcs = conn.execute("SELECT count(*) FROM citations").fetchone()[0]
+        stubs = conn.execute(
+            "SELECT count(*) FROM rulings WHERE decided_year = ?", (UNKNOWN_YEAR,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    log.info(
+        "grafo en %s: %s fallos (%s todavía sin relevar), %s aristas; "
+        "esta corrida procesó %s sumarios y escribió %s aristas",
+        args.db,
+        nodes,
+        stubs,
+        arcs,
+        rulings,
+        edges,
+    )
     return 0
 
 

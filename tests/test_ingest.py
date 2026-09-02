@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
 
+from citador_ar_mcp.domain.citation import RulingId
 from citador_ar_mcp.domain.treatment import Opinion
 from citador_ar_mcp.ingest import ocr
+from citador_ar_mcp.ingest.build_graph import (
+    create_schema,
+    done_volumes,
+    mark_done,
+    store_sumario,
+)
 from citador_ar_mcp.ingest.citations import (
     find_citations,
     join_page_breaks,
@@ -21,7 +29,7 @@ from citador_ar_mcp.ingest.extract import (
     clean_pdf_text,
     text_quality,
 )
-from citador_ar_mcp.ingest.fetch import parse_citing, parse_sumario, strip_html
+from citador_ar_mcp.ingest.fetch import Sumario, parse_citing, parse_sumario, strip_html
 
 # Verbatim from Bazterrica's PDF text layer, whose font subset has no usable
 # ToUnicode map. Reads as `que en consecuencia` on the page.
@@ -202,3 +210,75 @@ class TestOcrDiscovery:
         message = str(ocr.TesseractUnavailableError())
         assert "winget" in message
         assert "spa" in message
+
+
+class TestCrawlRobustness:
+    """The crawl is meant to survive dying halfway. The first full run proved it did not.
+
+    It died on tomo 330, 350 requests and about a gigabyte in, on a single
+    self-citing sumario, and left an empty database because the transaction only
+    committed once per tomo.
+    """
+
+    def _graph(self, tmp_path: Path) -> sqlite3.Connection:
+        conn = sqlite3.connect(tmp_path / "g.db")
+        conn.execute("PRAGMA foreign_keys = ON")
+        create_schema(conn)
+        return conn
+
+    def _sumario(self, citing: tuple[RulingId, ...]) -> Sumario:
+        rid = RulingId.build(330, 100)
+        assert rid is not None
+        return Sumario(
+            sumario_id=1,
+            ruling_id=rid,
+            caption="Caso de prueba",
+            decided_year=2007,
+            decided_on="01/01/2007",
+            expediente=None,
+            doc_id=None,
+            text="",
+            voces="",
+            votes_majority="",
+            votes_concurrence="",
+            votes_dissent="",
+            votes_partial_dissent="",
+            citing=citing,
+        )
+
+    def test_a_ruling_listed_among_its_own_citers_is_not_a_self_edge(self, tmp_path: Path) -> None:
+        """`linksCitantes` is per sumario, so a ruling can list itself.
+
+        The schema refuses a self-edge; before this was filtered, one such row
+        aborted the entire crawl.
+        """
+        conn = self._graph(tmp_path)
+        me = RulingId.build(330, 100)
+        other = RulingId.build(347, 688)
+        assert me is not None and other is not None
+
+        edges = store_sumario(conn, self._sumario((me, other)))
+        conn.commit()
+
+        assert edges == 1
+        rows = conn.execute("SELECT citing_id, cited_id FROM citations").fetchall()
+        assert rows == [("fallos:347:688", "fallos:330:100")]
+
+    def test_a_sumario_that_only_cites_itself_writes_the_node_anyway(self, tmp_path: Path) -> None:
+        conn = self._graph(tmp_path)
+        me = RulingId.build(330, 100)
+        assert me is not None
+
+        assert store_sumario(conn, self._sumario((me,))) == 0
+        conn.commit()
+        assert conn.execute("SELECT count(*) FROM rulings").fetchone()[0] == 1
+        assert conn.execute("SELECT count(*) FROM citations").fetchone()[0] == 0
+
+    def test_completed_tomos_are_recorded_so_a_restart_can_skip_them(self, tmp_path: Path) -> None:
+        """Restarting must not re-download the six gigabytes already fetched."""
+        conn = self._graph(tmp_path)
+        assert done_volumes(conn) == set()
+        mark_done(conn, 331)
+        mark_done(conn, 330)
+        conn.commit()
+        assert done_volumes(conn) == {330, 331}
