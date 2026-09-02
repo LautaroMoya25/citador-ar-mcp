@@ -166,6 +166,25 @@ RULES: Final[tuple[Rule, ...]] = (
         0.78,
     ),
     _rule(Treatment.FOLLOWED, "en-igual-sentido", r"en\s+(?:igual|el\s+mismo)\s+sentido", 0.72),
+    _rule(
+        Treatment.FOLLOWED,
+        "tal-como-resolvio-el-tribunal",
+        r"(?:tal\s+como|conforme|según)\s+(?:lo\s+)?"
+        r"(?:expuso|sostuvo|señaló|resolvió|decidió|estableció)\s+"
+        r"(?:el\s+Tribunal|esta\s+Corte|la\s+Corte)",
+        0.80,
+    ),
+    # --- applied ---------------------------------------------------------
+    _rule(
+        Treatment.APPLIED,
+        "doctrina-de",
+        # `(doctrina de Fallos: 320:1272)` invokes that ruling's holding as
+        # governing, which is what APPLIED means in this vocabulary. Kept at
+        # moderate confidence: it is a real signal but a generic one, and it
+        # appears in about 4% of passages sampled from tomo 332.
+        r"doctrina\s+(?:de|del)\b(?!\s*(?:la\s+)?(?:arbitrariedad|real\s+malicia))",
+        0.70,
+    ),
     # --- applied ---------------------------------------------------------
     _rule(
         Treatment.APPLIED,

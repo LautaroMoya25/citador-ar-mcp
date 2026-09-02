@@ -34,6 +34,7 @@ from typing import Any
 
 from citador_ar_mcp.config import DEFAULT_DB_PATH, SCHEMA_PATH, configure_logging
 from citador_ar_mcp.domain.citation import (
+    RulingId,
     normalize_caption,
     normalize_expediente,
     short_name_key,
@@ -48,6 +49,7 @@ from citador_ar_mcp.ingest.fetch import (
     parse_sumario,
     source_url_for,
 )
+from citador_ar_mcp.ingest.treatment import TreatmentClassifier
 
 log = logging.getLogger(__name__)
 
@@ -370,9 +372,6 @@ async def ingest_ruling(
     placeholder. Returns ``(citations found, citations classified)``.
     """
     from citador_ar_mcp.ingest import llm
-    from citador_ar_mcp.ingest.citations import find_citations, join_page_breaks
-    from citador_ar_mcp.ingest.extract import TextStatus, extract_pdf
-    from citador_ar_mcp.ingest.treatment import classify_passage
 
     # Opt-in: the stage costs money per passage, and a corpus crawl is a lot of
     # passages. Off unless CITADOR_LLM says otherwise.
@@ -380,22 +379,39 @@ async def ingest_ruling(
 
     cache.mkdir(parents=True, exist_ok=True)
     async with CsjnClient(delay=delay) as csjn:
-        sumarios = await csjn.sumarios(volume, page, limit=1)
-        if not sumarios:
-            log.error("Fallos %s:%s no está en la fuente", volume, page)
-            return 0, 0
-        s = sumarios[0]
-        if s.doc_id is None:
-            log.error("%s no tiene documento publicado", s.ruling_id.human)
-            return 0, 0
+        return await _ingest_one(conn, csjn, volume, page, cache=cache, classifier=classifier)
 
-        pdf_path = cache / f"{volume}-{page}.pdf"
-        if not pdf_path.exists():
-            body = await csjn.pdf(s.doc_id)
-            if body is None:
-                log.error("no pude bajar el PDF de %s", s.ruling_id.human)
-                return 0, 0
-            pdf_path.write_bytes(body)
+
+async def _ingest_one(
+    conn: sqlite3.Connection,
+    csjn: CsjnClient,
+    volume: int,
+    page: int,
+    *,
+    cache: Path,
+    classifier: TreatmentClassifier | None = None,
+) -> tuple[int, int]:
+    """One ruling, on an already-open client. See :func:`ingest_ruling`."""
+    from citador_ar_mcp.ingest.citations import find_citations, join_page_breaks
+    from citador_ar_mcp.ingest.extract import TextStatus, extract_pdf
+    from citador_ar_mcp.ingest.treatment import classify_passage
+
+    sumarios = await csjn.sumarios(volume, page, limit=1)
+    if not sumarios:
+        log.error("Fallos %s:%s no está en la fuente", volume, page)
+        return 0, 0
+    s = sumarios[0]
+    if s.doc_id is None:
+        log.error("%s no tiene documento publicado", s.ruling_id.human)
+        return 0, 0
+
+    pdf_path = cache / f"{volume}-{page}.pdf"
+    if not pdf_path.exists():
+        body = await csjn.pdf(s.doc_id)
+        if body is None:
+            log.error("no pude bajar el PDF de %s", s.ruling_id.human)
+            return 0, 0
+        pdf_path.write_bytes(body)
 
     extracted = extract_pdf(pdf_path, ocr_fallback=True, ocr_cache=cache / "ocr")
     upsert_ruling(
@@ -482,6 +498,103 @@ async def ingest_ruling(
     return found, classified
 
 
+def citers_of_top(conn: sqlite3.Connection, n: int) -> list[str]:
+    """Every ruling that cites one of the ``n`` most-cited rulings.
+
+    This is the set that has to be read to answer "is this still good law" about
+    the leading cases. Running the pipeline over the leading cases themselves
+    classifies how *they* treated *their* precedents, which is a different
+    question and leaves their own signal grey.
+    """
+    rows = conn.execute(
+        """
+        SELECT DISTINCT citing_id FROM citations WHERE cited_id IN (
+            SELECT cited_id FROM citations
+            GROUP BY cited_id ORDER BY count(DISTINCT citing_id) DESC LIMIT ?
+        )
+        ORDER BY citing_id
+        """,
+        (n,),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def already_classified(conn: sqlite3.Connection) -> set[str]:
+    """Rulings whose text has been read already.
+
+    ``text_status`` is the marker: the crawl leaves every node ``unavailable``
+    because it never opens a PDF, and only the classification pass sets anything
+    else. So this doubles as resume state without a second bookkeeping table.
+    """
+    return {r[0] for r in conn.execute("SELECT id FROM rulings WHERE text_status <> 'unavailable'")}
+
+
+async def classify_rulings(
+    conn: sqlite3.Connection,
+    ruling_ids: list[str],
+    *,
+    cache: Path,
+    delay: float = 0.5,
+    resume: bool = True,
+) -> tuple[int, int, int]:
+    """Read and classify a batch of rulings. Returns ``(done, edges, failed)``.
+
+    One HTTP session for the whole batch rather than one per ruling, and each
+    ruling is independent: a PDF that will not download or parse costs that
+    ruling and nothing else. Already-read rulings are skipped, so a batch that
+    dies at 300 of 387 resumes at 300.
+    """
+    from citador_ar_mcp.ingest import llm
+
+    classifier = llm.build() if llm.enabled_by_env() else None
+    if classifier is not None:
+        log.info("etapa LLM activa para lo que las reglas no resuelvan")
+
+    seen = already_classified(conn) if resume else set()
+    pending = [r for r in ruling_ids if r not in seen]
+    if seen:
+        log.info("ya leídos, se saltean: %s de %s", len(ruling_ids) - len(pending), len(ruling_ids))
+
+    cache.mkdir(parents=True, exist_ok=True)
+    done = edges = failed = 0
+    async with CsjnClient(delay=delay) as csjn:
+        for i, rid in enumerate(pending, 1):
+            rp = RulingId.parse(rid)
+            if rp is None:
+                log.warning("identificador ilegible, se saltea: %s", rid)
+                failed += 1
+                continue
+            try:
+                _found, classified = await _ingest_one(
+                    conn, csjn, rp.volume, rp.page, cache=cache, classifier=classifier
+                )
+            except Exception:
+                # One ruling must not cost the batch. The graph keeps whatever
+                # the earlier ones wrote.
+                log.exception("%s falló, se saltea", rp.human)
+                failed += 1
+                conn.rollback()
+                continue
+            done += 1
+            edges += classified
+            if i % 10 == 0:
+                log.info(
+                    "progreso: %s/%s leídos, %s aristas clasificadas, %s fallidos",
+                    i,
+                    len(pending),
+                    edges,
+                    failed,
+                )
+    set_meta(
+        conn,
+        source="csjn-pipeline",
+        built_on=date.today().isoformat(),
+        note="Aristas con pasaje real donde el fallo citante fue leído.",
+    )
+    conn.commit()
+    return done, edges, failed
+
+
 def _parse_ruling(spec: str) -> tuple[int, int]:
     volume, _, page = spec.partition(":")
     return int(volume), int(page)
@@ -508,12 +621,21 @@ def main(argv: list[str] | None = None) -> int:
             "citas y clasificación. Ej: 332:1963"
         ),
     )
+    ap.add_argument(
+        "--classify-citers-of-top",
+        type=int,
+        metavar="N",
+        help=(
+            "leer y clasificar todos los fallos que citan a los N más citados. "
+            "Es lo que hace falta para que esos N dejen de estar en gris."
+        ),
+    )
     ap.add_argument("--cache", type=Path, default=DEFAULT_DB_PATH.parent / "cache")
     ap.add_argument("--delay", type=float, default=0.5, help="segundos entre pedidos")
     args = ap.parse_args(argv)
 
-    if not (args.from_fixture or args.tomos or args.ruling):
-        ap.error("elegí --from-fixture, --tomos o --ruling")
+    if not (args.from_fixture or args.tomos or args.ruling or args.classify_citers_of_top):
+        ap.error("elegí --from-fixture, --tomos, --ruling o --classify-citers-of-top")
 
     args.db.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(args.db)
@@ -522,6 +644,18 @@ def main(argv: list[str] | None = None) -> int:
         create_schema(conn)
         if args.from_fixture:
             rulings, edges = load_fixture(conn)
+        elif args.classify_citers_of_top:
+            targets = citers_of_top(conn, args.classify_citers_of_top)
+            log.info(
+                "%s fallos citan a los %s más citados",
+                len(targets),
+                args.classify_citers_of_top,
+            )
+            rulings, edges, failed = asyncio.run(
+                classify_rulings(conn, targets, cache=args.cache, delay=args.delay)
+            )
+            if failed:
+                log.warning("%s fallos no se pudieron leer", failed)
         elif args.ruling:
             volume, page = _parse_ruling(args.ruling)
             _found, edges = asyncio.run(

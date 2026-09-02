@@ -162,3 +162,47 @@ class TestOcrTolerance:
             "corresponde apartarse de la doctrina. Por otro lado, Fallos: 328:4343 dice otra cosa"
         )
         assert treatment_of(quote, at=quote.find("328:4343")) is not Treatment.ABANDONED
+
+
+class TestFormulasFromTheRealCorpus:
+    """Rules added after measuring which formulas actually occur.
+
+    A sample of 120 real passages from tomo 332 classified at 0%: the rule set
+    had been built from the golden chain, which is four rulings written across
+    thirty years and not representative of how the Court cites day to day. Most
+    citations really are neutral -- strings of supporting cites joined by "v.,
+    entre otros" and "y su cita" -- but two carrying formulas were being missed.
+    """
+
+    def test_doctrina_de_invokes_the_precedent_as_governing(self) -> None:
+        """`(doctrina de Fallos: 320:1272)` applies that ruling's holding."""
+        quote = (
+            "los que se consideran afectados deben demostrar que quien emitió la "
+            "expresión obró con conocimiento de que eran falsas (doctrina de "
+            "Fallos: 320:1272; 327:943)"
+        )
+        assert treatment_of(quote, at=quote.find("320:1272")) is Treatment.APPLIED
+
+    def test_as_the_court_held_in_is_following(self) -> None:
+        quote = (
+            "tal como expuso el Tribunal en la causa Patitó (Fallos: 331:1530), "
+            "las reglas de la responsabilidad civil ceden"
+        )
+        assert treatment_of(quote, at=quote.find("331:1530")) is Treatment.FOLLOWED
+
+    def test_a_string_of_supporting_cites_stays_neutral(self) -> None:
+        """The common shape, and it genuinely takes no position on any of them."""
+        quote = (
+            "que interesan a vastos sectores de la población y que se originan en "
+            "una relación que supone una desigualdad entre las partes (Fallos: "
+            "181:209, 213/214; 239:80, 83 y 306:1059, 1064)"
+        )
+        assert treatment_of(quote, at=quote.find("181:209")) is Treatment.MENTIONED
+
+    def test_doctrina_de_a_named_doctrine_is_not_a_treatment(self) -> None:
+        """ "la doctrina de la real malicia" names a doctrine, not a precedent."""
+        quote = (
+            "en los términos de la doctrina de la real malicia, esta Corte "
+            "resolvió el caso (Fallos: 331:1530)"
+        )
+        assert treatment_of(quote, at=quote.find("331:1530")) is not Treatment.APPLIED
