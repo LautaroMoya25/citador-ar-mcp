@@ -14,3 +14,4 @@ data/*.db-wal
 data/*.db-shm
 data/cache/
 data/*.log
+data/INFORME-FINAL.txt
