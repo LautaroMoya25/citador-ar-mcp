@@ -1,0 +1,10 @@
+# Normaliza los finales de linea en el repo. Se desarrolla en Windows y CI corre
+# en Linux; sin esto el heredoc del workflow y los fixtures cambian entre checkouts.
+* text=auto eol=lf
+
+*.png  binary
+*.pdf  binary
+*.db   binary
+
+# El lockfile es ruido en los diffs, pero se versiona: fija las versiones exactas.
+uv.lock linguist-generated=true

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Evals de citador_ar_mcp.
+
+  Se corren contra el grafo que construye `--from-fixture`, que es el mismo que
+  arma CI:
+
+      uv run python -m citador_ar_mcp.ingest.build_graph --from-fixture
+
+  Ese corpus tiene los cuatro fallos de la cadena de la tenencia para consumo
+  personal y las cinco aristas entre ellos. Es chico a propósito: las evals
+  tienen que ser estables, y un corpus crawleado cambia cuando la Corte publica.
+
+  Estabilidad: los fallos de la Corte no cambian retroactivamente, así que la
+  única forma de que una eval se vuelva inestable es anclarla a doctrina en
+  disputa activa. Todas estas anclan a una cadena histórica cerrada, donde la
+  respuesta correcta es un hecho documentado.
+
+  Cuatro de las diez (2, 3, 5, 7) miden clasificación de tratamiento, no sólo
+  recuperación. Un citador que encuentra los fallos pero clasifica mal es peor
+  que inútil, y estas son las que lo detectan.
+-->
+<evaluation>
+
+  <qa_pair>
+    <question>Un escrito cita un precedente sólo por su número de expediente, "A. 891. XLIV". ¿De qué fallo se trata, cuál es su cita canónica en la colección Fallos y en qué fecha se dictó?</question>
+    <answer>Es Arriola, cita canónica Fallos: 332:1963, dictado el 25 de agosto de 2009. La carátula es "ARRIOLA SEBASTIAN Y OTROS s/CAUSA N° 9080".</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>¿Fallos: 313:1333 sigue siendo buen derecho? Indicá la señal, qué fallo posterior lo trató de ese modo y transcribí el pasaje que lo sustenta.</question>
+    <answer>No. La señal es roja: doctrina abandonada. Arriola (Fallos: 332:1963, 2009) se apartó de Montalvo, con tratamiento "abandoned" asignado al voto de la mayoría. El pasaje es el considerando 12 de Arriola, que narra el zigzag jurisprudencial y concluye que "hoy el Tribunal decide volver a 'Bazterrica'". La respuesta tiene que incluir el pasaje, no sólo la señal.</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Quiero apoyarme en Bazterrica (Fallos: 308:1392). ¿Está vigente? Explicá la historia completa del precedente.</question>
+    <answer>Está vigente pero con reservas: la señal es amarilla, no verde ni roja. Recibió dos tratamientos de la mayoría, uno negativo y uno positivo: Montalvo (Fallos: 313:1333, 1990) lo abandonó, y Arriola (Fallos: 332:1963, 2009) lo siguió. Como el tratamiento positivo es posterior al apartamiento, el precedente fue retomado y no es doctrina muerta; la señal no llega a verde porque estuvo diecinueve años desplazado y esa historia importa para citarlo.</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>¿En qué precedentes de la propia Corte se apoyó Arriola? Listalos del más viejo al más nuevo.</question>
+    <answer>En tres: Colavini (Fallos: 300:254, 1978), Bazterrica (Fallos: 308:1392, 1986) y Montalvo (Fallos: 313:1333, 1990).</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>¿Qué fallos del corpus recibieron un tratamiento "abandoned" de parte del voto de la mayoría de algún fallo posterior?</question>
+    <answer>Dos: Bazterrica (Fallos: 308:1392), abandonado por Montalvo en 1990, y Montalvo (Fallos: 313:1333), abandonado por Arriola en 2009. Colavini y Arriola no recibieron ningún tratamiento negativo registrado.</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>¿Se puede afirmar, a partir de este corpus, que Colavini (Fallos: 300:254) sigue siendo derecho vigente?</question>
+    <answer>No. La señal es gris: sin tratamiento registrado. Es citado por Bazterrica y por Arriola, pero en ambos casos como "mentioned", sin tomar postura. La ausencia de tratamiento negativo no equivale a vigencia confirmada, y la respuesta tiene que decirlo: gris significa que el corpus no registra tratamiento, lo que puede ser falta de cobertura.</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>El pasaje de Arriola en el que la Corte adopta la solución de Bazterrica, ¿pertenece al voto de la mayoría o a un voto concurrente? ¿Por qué importa la diferencia?</question>
+    <answer>Al voto de la mayoría. Importa porque Arriola se decidió con una mayoría de dos jueces y cinco votos propios, y la misma proposición aparece también en el voto concurrente de Lorenzetti ("corresponde aplicar el criterio que esta Corte desarrollara en el precedente 'Bazterrica'"). Un voto concurrente no fija la doctrina del tribunal, así que anclar la cadena ahí desdibujaría qué es lo que obliga.</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>¿De cuáles fallos del corpus el texto no se pudo extraer directamente del PDF y hubo que recuperarlo por OCR?</question>
+    <answer>De tres: Colavini (Fallos: 300:254), Bazterrica (Fallos: 308:1392) y Montalvo (Fallos: 313:1333), todos con text_status "ocr". Sólo Arriola (Fallos: 332:1963) tiene text_status "extracted". Los PDFs viejos traen capa de texto pero con fuentes sin mapa Unicode usable, de modo que lo extraído es una sustitución del texto real.</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Reconstruí la cadena doctrinaria que arranca en Bazterrica (Fallos: 308:1392) y decime dónde quedó parado cada eslabón.</question>
+    <answer>Dos eslabones. Montalvo (Fallos: 313:1333, 1990) abandonó a Bazterrica; Arriola (Fallos: 332:1963, 2009) lo siguió y, en el mismo movimiento, abandonó a Montalvo. Estado actual: Bazterrica en amarillo (vigente con reservas, abandonado y retomado), Montalvo en rojo (doctrina abandonada) y Arriola en gris (ningún fallo del corpus lo trata todavía).</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Un escrito cita "Fallos 308:1932". Resolvé esa cita.</question>
+    <answer>No resuelve: no hay ningún fallo en esa posición del corpus. Los dígitos de la página están transpuestos; lo más probable es que se haya querido citar Fallos: 308:1392, que es Bazterrica. La respuesta útil es señalar la corrección concreta, no limitarse a decir que no se encontró.</answer>
+  </qa_pair>
+
+</evaluation>

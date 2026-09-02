@@ -1,0 +1,437 @@
+"""Build the SQLite graph. Runs offline; the MCP server never calls this.
+
+Two sources, same writer:
+
+``--from-fixture``
+    Loads the annotated golden chain. Small, deterministic, no network. This is
+    what CI builds and what the tools are exercised against.
+
+``--tomos 300-349``
+    Crawls the CSJN. Idempotent and resumable by construction: every write is an
+    upsert keyed on the canonical identifier, so a run that dies halfway can be
+    repeated with no cleanup and no duplicates. It will die halfway.
+
+``--ruling 332:1963``
+    The whole pipeline over one ruling: fetch, extract, OCR when the text layer
+    is unusable, find citations, attribute each to a vote, and classify the
+    treatment. This is the path that produces edges carrying a real passage.
+
+The crawl leaves treatments unclassified -- every edge lands as ``mentioned`` at
+low confidence, which is the honest placeholder: we know A cites B, we do not
+yet know how. ``--ruling`` classifies, because it has the text to classify from.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import sqlite3
+from datetime import date
+from pathlib import Path
+from typing import Any
+
+from citador_ar_mcp.config import DEFAULT_DB_PATH, SCHEMA_PATH, configure_logging
+from citador_ar_mcp.domain.citation import (
+    normalize_caption,
+    normalize_expediente,
+    short_name_key,
+)
+from citador_ar_mcp.domain.treatment import Method, Opinion, Treatment
+from citador_ar_mcp.ingest.fetch import CsjnClient, Sumario
+
+log = logging.getLogger(__name__)
+
+FIXTURE = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "golden" / "chain.json"
+
+#: Confidence attached to an edge whose treatment has not been classified yet.
+#: Low on purpose: it must never be enough to drive a signal on its own.
+UNCLASSIFIED_CONFIDENCE = 0.2
+
+
+def create_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def upsert_ruling(conn: sqlite3.Connection, r: dict[str, Any]) -> None:
+    conn.execute(
+        """
+        INSERT INTO rulings (id, volume, page, caption, short_name, decided_on,
+                             decided_year, source_url, text_status, text_quality, csjn_doc_id)
+        VALUES (:id, :volume, :page, :caption, :short_name, :decided_on,
+                :decided_year, :source_url, :text_status, :text_quality, :csjn_doc_id)
+        ON CONFLICT(id) DO UPDATE SET
+            caption      = excluded.caption,
+            short_name   = coalesce(excluded.short_name, rulings.short_name),
+            decided_on   = coalesce(excluded.decided_on, rulings.decided_on),
+            decided_year = excluded.decided_year,
+            source_url   = excluded.source_url,
+            text_status  = excluded.text_status,
+            text_quality = excluded.text_quality,
+            csjn_doc_id  = coalesce(excluded.csjn_doc_id, rulings.csjn_doc_id)
+        """,
+        {
+            "text_quality": None,
+            "csjn_doc_id": None,
+            "short_name": None,
+            "decided_on": None,
+            **r,
+        },
+    )
+
+
+def upsert_alias(
+    conn: sqlite3.Connection, raw: str, ruling_id: str, form: str, source: str
+) -> None:
+    if not raw.strip():
+        return
+    conn.execute(
+        "INSERT INTO aliases (raw, ruling_id, form, source) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(raw) DO UPDATE SET ruling_id = excluded.ruling_id",
+        (raw, ruling_id, form, source),
+    )
+
+
+def upsert_citation(conn: sqlite3.Connection, e: dict[str, Any]) -> None:
+    conn.execute(
+        """
+        INSERT INTO citations (citing_id, cited_id, treatment, opinion, confidence,
+                               quote, method, sumario_id)
+        VALUES (:citing_id, :cited_id, :treatment, :opinion, :confidence,
+                :quote, :method, :sumario_id)
+        ON CONFLICT(citing_id, cited_id, quote) DO UPDATE SET
+            treatment  = excluded.treatment,
+            opinion    = excluded.opinion,
+            confidence = excluded.confidence,
+            method     = excluded.method
+        """,
+        {"sumario_id": None, **e},
+    )
+
+
+def set_meta(conn: sqlite3.Connection, **values: str) -> None:
+    for key, value in values.items():
+        conn.execute(
+            "INSERT INTO corpus_meta (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+
+def load_fixture(conn: sqlite3.Connection, path: Path = FIXTURE) -> tuple[int, int]:
+    """Load the annotated golden chain into an empty or existing graph."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    for r in data["rulings"]:
+        upsert_ruling(conn, r)
+        if r.get("short_name"):
+            upsert_alias(conn, short_name_key(r["short_name"]), r["id"], "short_name", "manual")
+        upsert_alias(conn, normalize_caption(r["caption"]), r["id"], "caption", "manual")
+        upsert_alias(conn, r["id"], r["id"], "fallos", "manual")
+
+    for raw, form, ruling_id in data["aliases"]:
+        upsert_alias(conn, raw, ruling_id, form, "manual")
+
+    for e in data["edges"]:
+        upsert_citation(
+            conn,
+            {
+                "citing_id": e["citing_id"],
+                "cited_id": e["cited_id"],
+                "treatment": e["treatment"],
+                "opinion": e["opinion"],
+                "confidence": e["confidence"],
+                "quote": e["quote"],
+                "method": e["method"],
+            },
+        )
+
+    set_meta(
+        conn,
+        source="fixture",
+        built_on=date.today().isoformat(),
+        corpus_tomos=str(data.get("corpus_tomos", "")),
+        note="Grafo mínimo: solo la cadena dorada. No es el corpus completo.",
+    )
+    return len(data["rulings"]), len(data["edges"])
+
+
+def _ruling_row(s: Sumario, text_status: str = "unavailable") -> dict[str, Any]:
+    return {
+        "id": str(s.ruling_id),
+        "volume": s.ruling_id.volume,
+        "page": s.ruling_id.page,
+        "caption": s.caption or str(s.ruling_id),
+        "short_name": None,
+        "decided_on": s.decided_on,
+        "decided_year": s.decided_year,
+        "source_url": s.source_url,
+        "text_status": text_status,
+        "text_quality": None,
+        "csjn_doc_id": s.doc_id,
+    }
+
+
+async def crawl(conn: sqlite3.Connection, volumes: range, *, delay: float = 0.5) -> tuple[int, int]:
+    """Crawl a range of tomos into the graph.
+
+    Edges come from ``linksCitantes``, which the CSJN publishes per sumario. That
+    gives the shape of the graph without reading a single PDF. Treatments are
+    left unclassified.
+
+    The placeholder quote records where the assertion came from rather than
+    pretending to be a passage, so nothing downstream can mistake it for one.
+    """
+    rulings = edges = 0
+    async with CsjnClient(delay=delay) as csjn:
+        for volume in volumes:
+            try:
+                sumarios = await csjn.sumarios(volume)
+            except Exception:
+                log.exception("tomo %s: falló, se saltea y se puede reanudar", volume)
+                continue
+
+            for s in sumarios:
+                upsert_ruling(conn, _ruling_row(s))
+                upsert_alias(conn, str(s.ruling_id), str(s.ruling_id), "fallos", "api")
+                if s.caption:
+                    upsert_alias(
+                        conn, normalize_caption(s.caption), str(s.ruling_id), "caption", "api"
+                    )
+                if s.expediente and (exp := normalize_expediente(s.expediente)):
+                    upsert_alias(conn, exp, str(s.ruling_id), "expediente", "api")
+                rulings += 1
+
+                for citing in s.citing:
+                    # The citing ruling may not be crawled yet; the foreign key
+                    # needs a node, so insert a stub the later pass will fill in.
+                    conn.execute(
+                        "INSERT OR IGNORE INTO rulings (id, volume, page, caption, "
+                        "decided_year, source_url, text_status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            str(citing),
+                            citing.volume,
+                            citing.page,
+                            citing.human,
+                            0,
+                            s.source_url,
+                            "unavailable",
+                        ),
+                    )
+                    upsert_citation(
+                        conn,
+                        {
+                            "citing_id": str(citing),
+                            "cited_id": str(s.ruling_id),
+                            "treatment": Treatment.MENTIONED.value,
+                            "opinion": Opinion.UNKNOWN.value,
+                            "confidence": UNCLASSIFIED_CONFIDENCE,
+                            "quote": (
+                                f"Referencia publicada por la CSJN en el sumario {s.sumario_id} "
+                                f"de {s.ruling_id.human}. Sin clasificar: falta el pasaje."
+                            ),
+                            "method": Method.RULE.value,
+                            "sumario_id": s.sumario_id,
+                        },
+                    )
+                    edges += 1
+
+            conn.commit()
+            log.info("tomo %s: %s sumarios, %s aristas acumuladas", volume, len(sumarios), edges)
+
+    set_meta(
+        conn,
+        source="csjn-crawl",
+        built_on=date.today().isoformat(),
+        tomos=f"{volumes.start}-{volumes.stop - 1}",
+        note="Aristas sin clasificar: todas en 'mentioned' con confianza baja.",
+    )
+    return rulings, edges
+
+
+async def ingest_ruling(
+    conn: sqlite3.Connection,
+    volume: int,
+    page: int,
+    *,
+    cache: Path,
+    delay: float = 0.5,
+) -> tuple[int, int]:
+    """Run the whole pipeline over one ruling: fetch, extract, cite, classify, store.
+
+    This is Fase 4 and Fase 5 end to end for a single node, and it is how the
+    graph gets edges that carry a real passage instead of the crawl's
+    placeholder. Returns ``(citations found, citations classified)``.
+    """
+    from citador_ar_mcp.ingest import llm
+    from citador_ar_mcp.ingest.citations import find_citations, join_page_breaks
+    from citador_ar_mcp.ingest.extract import TextStatus, extract_pdf
+    from citador_ar_mcp.ingest.treatment import classify_passage
+
+    # Opt-in: the stage costs money per passage, and a corpus crawl is a lot of
+    # passages. Off unless CITADOR_LLM says otherwise.
+    classifier = llm.build() if llm.enabled_by_env() else None
+
+    cache.mkdir(parents=True, exist_ok=True)
+    async with CsjnClient(delay=delay) as csjn:
+        sumarios = await csjn.sumarios(volume, page, limit=1)
+        if not sumarios:
+            log.error("Fallos %s:%s no está en la fuente", volume, page)
+            return 0, 0
+        s = sumarios[0]
+        if s.doc_id is None:
+            log.error("%s no tiene documento publicado", s.ruling_id.human)
+            return 0, 0
+
+        pdf_path = cache / f"{volume}-{page}.pdf"
+        if not pdf_path.exists():
+            body = await csjn.pdf(s.doc_id)
+            if body is None:
+                log.error("no pude bajar el PDF de %s", s.ruling_id.human)
+                return 0, 0
+            pdf_path.write_bytes(body)
+
+    extracted = extract_pdf(pdf_path, ocr_fallback=True, ocr_cache=cache / "ocr")
+    upsert_ruling(
+        conn,
+        {
+            **_ruling_row(s, extracted.status.value),
+            "text_quality": extracted.quality,
+        },
+    )
+    upsert_alias(conn, str(s.ruling_id), str(s.ruling_id), "fallos", "api")
+    if s.caption:
+        upsert_alias(conn, normalize_caption(s.caption), str(s.ruling_id), "caption", "api")
+    if s.expediente and (exp := normalize_expediente(s.expediente)):
+        upsert_alias(conn, exp, str(s.ruling_id), "expediente", "api")
+
+    if extracted.status not in (TextStatus.EXTRACTED, TextStatus.OCR):
+        log.warning(
+            "%s: texto '%s', no se pueden extraer pasajes",
+            s.ruling_id.human,
+            extracted.status.value,
+        )
+        conn.commit()
+        return 0, 0
+
+    text = join_page_breaks(extracted.text)
+    found = classified = 0
+    for cite in find_citations(text, exclude=s.ruling_id):
+        found += 1
+        # The citation's offset inside its own quote, which is what tells the
+        # classifier which clause to read.
+        local = cite.quote.find(cite.raw)
+        result = classify_passage(
+            cite.quote,
+            citation_position=local if local >= 0 else None,
+            cited=str(cite.cited),
+            llm=classifier,
+        )
+        if not result.is_fallback:
+            classified += 1
+
+        # The cited ruling may not be in the graph yet; the foreign key needs a
+        # node, so insert a stub for a later pass to fill in.
+        conn.execute(
+            "INSERT OR IGNORE INTO rulings (id, volume, page, caption, decided_year, "
+            "source_url, text_status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(cite.cited),
+                cite.cited.volume,
+                cite.cited.page,
+                cite.cited.human,
+                0,
+                s.source_url,
+                "unavailable",
+            ),
+        )
+        upsert_citation(
+            conn,
+            {
+                "citing_id": str(s.ruling_id),
+                "cited_id": str(cite.cited),
+                "treatment": result.treatment.value,
+                "opinion": cite.opinion.value,
+                "confidence": result.confidence,
+                "quote": cite.quote,
+                "method": result.method.value,
+                "sumario_id": None,
+            },
+        )
+
+    set_meta(
+        conn,
+        source="csjn-pipeline",
+        built_on=date.today().isoformat(),
+        note="Aristas con pasaje real y tratamiento clasificado por reglas.",
+    )
+    conn.commit()
+    log.info(
+        "%s: %s citas, %s clasificadas por regla, %s en 'mentioned' de fallback",
+        s.ruling_id.human,
+        found,
+        classified,
+        found - classified,
+    )
+    return found, classified
+
+
+def _parse_ruling(spec: str) -> tuple[int, int]:
+    volume, _, page = spec.partition(":")
+    return int(volume), int(page)
+
+
+def _parse_tomos(spec: str) -> range:
+    if "-" in spec:
+        lo, hi = spec.split("-", 1)
+        return range(int(lo), int(hi) + 1)
+    n = int(spec)
+    return range(n, n + 1)
+
+
+def main(argv: list[str] | None = None) -> int:
+    configure_logging()
+    ap = argparse.ArgumentParser(description="Construye el grafo de citas en SQLite.")
+    ap.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
+    ap.add_argument("--from-fixture", action="store_true", help="cargar solo la cadena dorada")
+    ap.add_argument("--tomos", help="rango de tomos a crawlear, p. ej. 330-349")
+    ap.add_argument(
+        "--ruling",
+        help=(
+            "pipeline completo sobre un fallo: fetch, OCR si hace falta, "
+            "citas y clasificación. Ej: 332:1963"
+        ),
+    )
+    ap.add_argument("--cache", type=Path, default=DEFAULT_DB_PATH.parent / "cache")
+    ap.add_argument("--delay", type=float, default=0.5, help="segundos entre pedidos")
+    args = ap.parse_args(argv)
+
+    if not (args.from_fixture or args.tomos or args.ruling):
+        ap.error("elegí --from-fixture, --tomos o --ruling")
+
+    args.db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(args.db)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        create_schema(conn)
+        if args.from_fixture:
+            rulings, edges = load_fixture(conn)
+        elif args.ruling:
+            volume, page = _parse_ruling(args.ruling)
+            _found, edges = asyncio.run(
+                ingest_ruling(conn, volume, page, cache=args.cache, delay=args.delay)
+            )
+            rulings = 1
+        else:
+            rulings, edges = asyncio.run(crawl(conn, _parse_tomos(args.tomos), delay=args.delay))
+        conn.commit()
+    finally:
+        conn.close()
+
+    log.info("grafo en %s: %s fallos, %s aristas", args.db, rulings, edges)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

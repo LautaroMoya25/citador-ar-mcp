@@ -1,0 +1,204 @@
+{
+  "_comment": "Fixture dorado del proyecto. Metadatos y pasajes extraídos de la fuente; etiquetas de tratamiento asignadas a mano. Regenerar con scripts/build_golden_fixture.py.",
+  "generated_on": "2026-09-01",
+  "source": "CSJN, Secretaría de Jurisprudencia (sjconsulta.csjn.gov.ar)",
+  "corpus_tomos": 349,
+  "notes": {
+    "implicit_overruling": "Bazterrica se aparta de Colavini sin citarlo en el pasaje donde se aparta. Un citador construido sobre el grafo de citas no puede, estructuralmente, detectar un abandono implícito: no hay cita que clasificar. Es una limitación del método, no un bug, y el README la declara.",
+    "dictamen_del_procurador": "Los tomos impresos traen el dictamen del Procurador General antes del fallo, en el mismo documento. En Bazterrica el Procurador pedía mantener Colavini y la Corte resolvió al revés, así que atribuir sus citas al tribunal invertiría el resultado. Se segmenta como opinion='dictamen' y no es vinculante."
+  },
+  "rulings": [
+    {
+      "id": "fallos:300:254",
+      "volume": 300,
+      "page": 254,
+      "caption": "Colavini, Ariel Omar.",
+      "short_name": "Colavini",
+      "decided_on": null,
+      "decided_year": 1978,
+      "source_url": "https://sjconsulta.csjn.gov.ar/sjconsulta/consultaSumarios/buscarTomoPagina.html?tomo=300&pagina=254",
+      "csjn_doc_id": 7834791,
+      "text_status": "ocr",
+      "text_quality": 0.8848
+    },
+    {
+      "id": "fallos:308:1392",
+      "volume": 308,
+      "page": 1392,
+      "caption": "Bazterrica, Gustavo Mario - Alejandro Carlos Capalbo.",
+      "short_name": "Bazterrica",
+      "decided_on": null,
+      "decided_year": 1986,
+      "source_url": "https://sjconsulta.csjn.gov.ar/sjconsulta/consultaSumarios/buscarTomoPagina.html?tomo=308&pagina=1392",
+      "csjn_doc_id": 7838661,
+      "text_status": "ocr",
+      "text_quality": 0.915
+    },
+    {
+      "id": "fallos:313:1333",
+      "volume": 313,
+      "page": 1333,
+      "caption": "Montalvo, Ernesto Alfredo psa. inf. ley 20.771.",
+      "short_name": "Montalvo",
+      "decided_on": "11/12/1990",
+      "decided_year": 1990,
+      "source_url": "https://sjconsulta.csjn.gov.ar/sjconsulta/consultaSumarios/buscarTomoPagina.html?tomo=313&pagina=1333",
+      "csjn_doc_id": 7844691,
+      "text_status": "ocr",
+      "text_quality": 0.8733
+    },
+    {
+      "id": "fallos:332:1963",
+      "volume": 332,
+      "page": 1963,
+      "caption": "ARRIOLA SEBASTIAN Y OTROS s/CAUSA N° 9080",
+      "short_name": "Arriola",
+      "decided_on": "25/08/2009",
+      "decided_year": 2009,
+      "source_url": "https://sjconsulta.csjn.gov.ar/sjconsulta/consultaSumarios/buscarTomoPagina.html?tomo=332&pagina=1963",
+      "csjn_doc_id": 6711401,
+      "text_status": "extracted",
+      "text_quality": 0.8902
+    }
+  ],
+  "aliases": [
+    [
+      "A.891.XLIV",
+      "expediente",
+      "fallos:332:1963"
+    ],
+    [
+      "ARRIOLA",
+      "short_name",
+      "fallos:332:1963"
+    ],
+    [
+      "ARRIOLA SEBASTIAN",
+      "caption",
+      "fallos:332:1963"
+    ],
+    [
+      "BAZTERRICA",
+      "short_name",
+      "fallos:308:1392"
+    ],
+    [
+      "BAZTERRICA GUSTAVO MARIO ALEJANDRO CARLOS CAPALBO",
+      "caption",
+      "fallos:308:1392"
+    ],
+    [
+      "COLAVINI",
+      "short_name",
+      "fallos:300:254"
+    ],
+    [
+      "COLAVINI ARIEL OMAR",
+      "caption",
+      "fallos:300:254"
+    ],
+    [
+      "MONTALVO",
+      "short_name",
+      "fallos:313:1333"
+    ],
+    [
+      "MONTALVO ERNESTO ALFREDO PSA INF LEY 20 771",
+      "caption",
+      "fallos:313:1333"
+    ],
+    [
+      "fallos:300:254",
+      "fallos",
+      "fallos:300:254"
+    ],
+    [
+      "fallos:308:1392",
+      "fallos",
+      "fallos:308:1392"
+    ],
+    [
+      "fallos:313:1333",
+      "fallos",
+      "fallos:313:1333"
+    ],
+    [
+      "fallos:332:1963",
+      "fallos",
+      "fallos:332:1963"
+    ]
+  ],
+  "edges": [
+    {
+      "citing_id": "fallos:332:1963",
+      "cited_id": "fallos:308:1392",
+      "citing": "Arriola",
+      "cited": "Bazterrica",
+      "treatment": "followed",
+      "opinion": "majority",
+      "opinion_author": "",
+      "confidence": 1.0,
+      "method": "manual",
+      "quote": "10) Que como primera consideración cabe señalar que las cuestiones centrales en debate en el sub lite, tales como el alcance que cabe otorgarle a las \"acciones privadas\" previstas en el artículo 19 de la Constitución Nacional, al bien jurídico \"salud pública\", han sido resueltas acertadamente en \"Bazterrica\" (Fallos: 308:1392), precedente que en los últimos veinte años, se ha transformado en un caso emblemático, e incluso en uno de los más estudiados en círculos académicos, razones por las cuales este Tribunal no prete",
+      "offset": 12607,
+      "note": "Considerando 10 del voto de la mayoría: adopta expresamente la solución de Bazterrica. Se elige este pasaje y no el equivalente del voto de Lorenzetti ('corresponde aplicar el criterio...') porque un voto concurrente no fija la doctrina del tribunal."
+    },
+    {
+      "citing_id": "fallos:332:1963",
+      "cited_id": "fallos:313:1333",
+      "citing": "Arriola",
+      "cited": "Montalvo",
+      "treatment": "abandoned",
+      "opinion": "majority",
+      "opinion_author": "",
+      "confidence": 1.0,
+      "method": "manual",
+      "quote": "Así en \"Colavini\" (Fallos: 300:254) se pronunció a favor de la criminalización; en \"Bazterrica\" y \"Capalbo\", se apartó de tal doctrina (Fallos: 308:1392); y en 1990, en \"Montalvo\" vuelve nuevamente sobre sus pasos a favor de la criminalización de la tenencia para consumo personal (Fallos: 313:1333), y como lo adelantáramos en las consideraciones previas, hoy el Tribunal decide volver a \"Bazterrica\". 13) Que si bien el debate jurídico sobre la tenencia A. 891. XLIV.",
+      "offset": 14267,
+      "note": "El considerando 12 narra el zigzag y anuncia el regreso a Bazterrica, lo que implica apartarse de Montalvo."
+    },
+    {
+      "citing_id": "fallos:332:1963",
+      "cited_id": "fallos:300:254",
+      "citing": "Arriola",
+      "cited": "Colavini",
+      "treatment": "mentioned",
+      "opinion": "majority",
+      "opinion_author": "",
+      "confidence": 1.0,
+      "method": "manual",
+      "quote": "12) Que, como lo han señalado varios de los sujetos procesales que intervinieron en estas actuaciones, la jurisprudencia de esta Corte en un tema tan trascendente, lejos de ser pacífica, ha sido zigzagueante. Así en \"Colavini\" (Fallos: 300:254) se pronunció a favor de la criminalización; en \"Bazterrica\" y \"Capalbo\", se apartó de tal doctrina (Fallos: 308:1392);",
+      "offset": 14004,
+      "note": "Arriola cita a Colavini para narrar la historia del problema, no para tomar postura sobre él: Bazterrica ya se había apartado en 1986. Ante duda, mentioned."
+    },
+    {
+      "citing_id": "fallos:308:1392",
+      "cited_id": "fallos:300:254",
+      "citing": "Bazterrica",
+      "cited": "Colavini",
+      "treatment": "mentioned",
+      "opinion": "majority",
+      "opinion_author": "",
+      "confidence": 1.0,
+      "method": "manual",
+      "quote": "nar del legislador en el sentido indicado no puede exceder, pues, el campo de las acciones de los hombres que ofendan a la moral pública, al que se refieren las normas morales que se dirigen a la protección de bienes de terceros. 6%) Que este Tribunal ha valorado la magnitud del problema de la drogadicción en Fallos: 300:254, en que destacó la deletérea influencia de la creciente difusión actual de toxicomanía en el mun- do entero.",
+      "offset": 55499,
+      "note": "OJO: doctrinariamente Bazterrica abandona a Colavini, y el propio Arriola lo dice ('en Bazterrica y Capalbo, se apartó de tal doctrina'). Pero el voto de la mayoría de Bazterrica cita a Colavini una sola vez, en el considerando 6, y lo cita a favor: acepta su valoración de la magnitud del problema. El apartamiento llega en el considerando 8 ('sin embargo, no se debe presumir') y no menciona el precedente. Es un abandono implícito. El pasaje sostiene 'mentioned' y nada más fuerte, así que eso se anota. Ver la nota 'implicit_overruling' del fixture."
+    },
+    {
+      "citing_id": "fallos:313:1333",
+      "cited_id": "fallos:308:1392",
+      "citing": "Montalvo",
+      "cited": "Bazterrica",
+      "treatment": "abandoned",
+      "opinion": "majority",
+      "opinion_author": "",
+      "confidence": 1.0,
+      "method": "manual",
+      "quote": "19 está sujeto a al autoridad de los magistrados y. por tanto. se subordina a las formas de control social que cl Estado, como agente insustituible del bien común, pueda emplear lícita y discrecionalmente. No es compatible, pues. cl criterio expuesto en cl primer voto de Fallos 308: 1392 (consid. 8%). donde sc sostuvo que la norma constitucional s:/b examine sólo es inaplicable si “debe presumirse” que las acciones privadas afectarán a la ética colectiva “en todos los casos”.",
+      "offset": 45822,
+      "note": "Considerando del voto de la mayoría: 'No es compatible, pues, el criterio expuesto en el primer voto de Fallos 308:1392 (consid. 8)'. Rechazo expreso de la doctrina de Bazterrica, con la cita al lado."
+    }
+  ],
+  "pending": []
+}

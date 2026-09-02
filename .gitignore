@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# El grafo se genera y se publica como release asset. Ver CLAUDE.md seccion 5.
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/cache/

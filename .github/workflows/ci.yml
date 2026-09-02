@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Only the ingest pipeline needs it, and only for rulings whose PDF text
+      # layer is unusable. The test suite runs off the committed fixture and does
+      # not shell out to it, but tests/test_ingest.py asserts on discovery, so
+      # having it present keeps CI honest about the path users actually take.
+      - name: Install Tesseract (Spanish)
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-spa
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --extra ingest --all-groups
+        env:
+          UV_PYTHON: ${{ matrix.python-version }}
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      # domain/ is under --strict via the override in pyproject.toml. It is the
+      # part with no I/O, so there is no excuse for it to be loosely typed.
+      - name: Types
+        run: uv run mypy
+
+      # No network. The golden fixture is committed and the graph is built from
+      # it, so a CSJN outage cannot turn the build red.
+      - name: Build graph from fixture
+        run: uv run python -m citador_ar_mcp.ingest.build_graph --from-fixture
+
+      - name: Tests
+        run: uv run pytest -q
+
+      # Fails the build only on a false red -- a departure asserted where the
+      # text does not support one. A missed departure costs coverage; a false one
+      # tells a lawyer to discard good authority.
+      - name: Treatment classifier against the golden chain
+        run: uv run python scripts/eval_treatment.py
+
+      # schema.sql and py.typed are loaded at runtime from inside the package;
+      # if either stops being packaged, the failure shows up at a user's install,
+      # not here.
+      - name: Package builds with its data files
+        run: |
+          uv build
+          uv run python - <<'PY'
+          import glob, zipfile
+          names = zipfile.ZipFile(sorted(glob.glob("dist/*.whl"))[-1]).namelist()
+          for want in ("citador_ar_mcp/py.typed", "citador_ar_mcp/store/schema.sql"):
+              assert want in names, f"falta {want} en el wheel"
+          PY
+
+      - name: Server starts and registers the five tools
+        run: |
+          uv run python - <<'PY'
+          import asyncio
+          from citador_ar_mcp.server import mcp
+
+          async def main() -> None:
+              tools = await mcp.list_tools()
+              names = sorted(t.name for t in tools)
+              expected = sorted([
+                  "citador_check_status",
+                  "citador_cited_rulings",
+                  "citador_citing_rulings",
+                  "citador_lookup_ruling",
+                  "citador_trace_doctrine",
+              ])
+              assert names == expected, names
+              for t in tools:
+                  a = t.annotations
+                  assert a is not None, t.name
+                  # Read-only server: every tool, every time.
+                  assert a.read_only_hint is True, t.name
+                  assert a.destructive_hint is False, t.name
+                  assert a.idempotent_hint is True, t.name
+                  assert a.open_world_hint is False, t.name
+
+          asyncio.run(main())
+          PY
