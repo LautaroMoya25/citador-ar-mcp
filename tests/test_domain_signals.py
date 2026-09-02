@@ -256,3 +256,38 @@ class TestNonBindingBreakdown:
     def test_majority_citations_are_not_in_the_breakdown(self) -> None:
         report = aggregate(SUBJECT, [rec(Treatment.FOLLOWED, opinion=Opinion.MAJORITY)])
         assert report.non_binding_by_opinion == {}
+
+
+class TestCoverageCaveat:
+    """A signal resting on three passages is not the claim a signal resting on fifty is.
+
+    Measured on the real corpus: a green light stood on a single `applied`
+    against twenty-six citations nobody had classified. "Vigente" is the wrong
+    headline for "found one favourable cite and could not read the rest".
+    """
+
+    def _unread(self, page: int) -> TreatmentRecord:
+        return rec(Treatment.MENTIONED, page=page, confidence=0.2)
+
+    def test_a_green_on_thin_evidence_says_so(self) -> None:
+        records = [rec(Treatment.APPLIED, page=1)] + [self._unread(p) for p in range(2, 28)]
+        report = aggregate(SUBJECT, records)
+        assert report.signal is Signal.GREEN
+        assert any("de 27 citas de la mayoría" in c for c in report.caveats)
+
+    def test_a_green_on_read_evidence_does_not(self) -> None:
+        records = [rec(Treatment.APPLIED, page=p) for p in range(1, 6)]
+        assert not any("quedó sin leer" in c for c in aggregate(SUBJECT, records).caveats)
+
+    def test_the_caveat_also_covers_yellow(self) -> None:
+        records = [rec(Treatment.DISTINGUISHED, page=1)] + [self._unread(p) for p in range(2, 12)]
+        report = aggregate(SUBJECT, records)
+        assert report.signal is Signal.YELLOW
+        assert any("quedó sin leer" in c for c in report.caveats)
+
+    def test_red_is_not_softened_by_it(self) -> None:
+        """A departure is a departure however little else was read."""
+        records = [rec(Treatment.ABANDONED, page=1)] + [self._unread(p) for p in range(2, 30)]
+        report = aggregate(SUBJECT, records)
+        assert report.signal is Signal.RED
+        assert not any("quedó sin leer" in c for c in report.caveats)

@@ -57,6 +57,12 @@ _SIGNAL_LABEL_ES: Final[dict[Signal, str]] = {
     Signal.GRAY: "sin tratamiento registrado",
 }
 
+#: At or below this, a record is an unread citation rather than a classified
+#: one: the pipeline found the citation but no rule and no model could say what
+#: it did. It matches the fallback confidence in ``ingest/treatment.py``, kept
+#: here as a separate constant because ``domain/`` must not import ``ingest/``.
+UNCLASSIFIED_CEILING: Final = 0.25
+
 _SIGNAL_GLYPH: Final[dict[Signal, str]] = {
     Signal.RED: "🔴",
     Signal.YELLOW: "🟡",
@@ -299,6 +305,19 @@ def _build_caveats(
         caveats.append(
             "Ninguno de los tratamientos pudo atribuirse al voto de la mayoría. "
             "La señal es indeterminada, no positiva."
+        )
+
+    # How much of the evidence the classifier could actually read. A signal that
+    # rests on three passages out of fifty is not the same claim as one that
+    # rests on fifty out of fifty, and the difference has to reach the reader:
+    # measured on the real corpus, a green light could stand on a single
+    # `applied` against twenty-six citations nobody classified.
+    unread = [r for r in binding if r.confidence <= UNCLASSIFIED_CEILING]
+    if binding and signal in (Signal.GREEN, Signal.YELLOW) and len(unread) > len(binding) / 2:
+        caveats.append(
+            f"Solo {len(binding) - len(unread)} de {len(binding)} citas de la mayoría "
+            "pudieron clasificarse; el resto quedó sin leer. La señal descansa en esa "
+            "minoría y podría cambiar si se clasificaran las demás."
         )
 
     if signal is Signal.RED:
