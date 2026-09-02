@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import httpx
 import pytest
 
 from citador_ar_mcp.domain.citation import RulingId
@@ -29,7 +30,14 @@ from citador_ar_mcp.ingest.extract import (
     clean_pdf_text,
     text_quality,
 )
-from citador_ar_mcp.ingest.fetch import Sumario, parse_citing, parse_sumario, strip_html
+from citador_ar_mcp.ingest.fetch import (
+    CsjnClient,
+    SessionExpiredError,
+    Sumario,
+    parse_citing,
+    parse_sumario,
+    strip_html,
+)
 
 # Verbatim from Bazterrica's PDF text layer, whose font subset has no usable
 # ToUnicode map. Reads as `que en consecuencia` on the page.
@@ -282,3 +290,63 @@ class TestCrawlRobustness:
         mark_done(conn, 330)
         conn.commit()
         assert done_volumes(conn) == {330, 331}
+
+
+class TestPageRetry:
+    """One 504 in about 1.500 requests, seen in a real crawl of tomos 330-349.
+
+    The next request succeeded immediately, so the failure was transient and the
+    page's ten sumarios were lost for no reason.
+    """
+
+    class _Response:
+        def __init__(self, status: int, payload: object = None) -> None:
+            self.status_code = status
+            self._payload = payload if payload is not None else []
+            self.request = httpx.Request("GET", "https://example.test")
+
+        def raise_for_status(self) -> None:
+            if self.status_code >= 400:
+                raise httpx.HTTPStatusError("boom", request=self.request, response=self)  # type: ignore[arg-type]
+
+        def json(self) -> object:
+            return self._payload
+
+    class _Client:
+        def __init__(self, statuses: list[int]) -> None:
+            self.statuses = statuses
+            self.calls = 0
+
+        async def get(self, url: str, params: object = None) -> object:
+            status = self.statuses[min(self.calls, len(self.statuses) - 1)]
+            self.calls += 1
+            return TestPageRetry._Response(status, [{"id": 1}])
+
+    def _client(self, statuses: list[int]) -> CsjnClient:
+        c = CsjnClient(delay=0.0)
+        c._client = TestPageRetry._Client(statuses)  # type: ignore[assignment]
+        return c
+
+    async def test_a_transient_504_is_retried_and_succeeds(self) -> None:
+        csjn = self._client([504, 200])
+        assert await csjn.page(620) == [{"id": 1}]
+        assert csjn._client.calls == 2  # type: ignore[union-attr]
+
+    async def test_it_gives_up_after_the_allowed_attempts(self) -> None:
+        csjn = self._client([504])
+        with pytest.raises(httpx.HTTPStatusError):
+            await csjn.page(620, attempts=3)
+        assert csjn._client.calls == 3  # type: ignore[union-attr]
+
+    async def test_a_401_is_not_retried_because_it_is_not_transient(self) -> None:
+        """It means the session lost the search; the caller has to re-run it."""
+        csjn = self._client([401, 200])
+        with pytest.raises(SessionExpiredError):
+            await csjn.page(620)
+        assert csjn._client.calls == 1  # type: ignore[union-attr]
+
+    async def test_a_client_error_is_not_retried_either(self) -> None:
+        csjn = self._client([404])
+        with pytest.raises(httpx.HTTPStatusError):
+            await csjn.page(620)
+        assert csjn._client.calls == 1  # type: ignore[union-attr]

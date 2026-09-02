@@ -290,6 +290,7 @@ async def crawl(
                 continue
 
             got = 0
+            lost = 0
             for start in range(0, total, PAGE_SIZE):
                 try:
                     batch = await csjn.page(start)
@@ -297,6 +298,10 @@ async def crawl(
                     await csjn.search(volume)
                     batch = await csjn.page(start)
                 except Exception:
+                    # Already retried inside page(). Count it: a tomo missing a
+                    # page is not a finished tomo, and marking it done would hide
+                    # ten sumarios from every later run.
+                    lost += 1
                     log.exception("tomo %s: falló la página %s, se saltea", volume, start)
                     continue
                 if not batch:
@@ -321,9 +326,24 @@ async def crawl(
                 conn.commit()
                 await asyncio.sleep(delay)
 
-            mark_done(conn, volume)
+            if lost:
+                log.warning(
+                    "tomo %s: %s página(s) perdida(s); NO se marca como relevado, "
+                    "una nueva corrida lo reintenta",
+                    volume,
+                    lost,
+                )
+            else:
+                mark_done(conn, volume)
             conn.commit()
-            log.info("tomo %s: %s/%s sumarios, %s aristas acumuladas", volume, got, total, edges)
+            log.info(
+                "tomo %s: %s/%s sumarios%s, %s aristas acumuladas",
+                volume,
+                got,
+                total,
+                f" ({lost} página(s) perdida(s))" if lost else "",
+                edges,
+            )
 
     set_meta(
         conn,

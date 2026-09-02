@@ -169,17 +169,51 @@ class CsjnClient:
         m = _TOTAL_RE.search(r.text)
         return int(m.group(1)) if m else 0
 
-    async def page(self, start_index: int) -> list[dict[str, Any]]:
-        """Fetch one page of the current session's search results."""
-        r = await self.client.get(
-            f"{BASE}/consultaSumarios/paginarSumarios.html",
-            params={"startIndex": start_index},
-        )
-        if r.status_code == 401:
-            raise SessionExpiredError(start_index)
-        r.raise_for_status()
-        data = r.json()
-        return data if isinstance(data, list) else []
+    async def page(self, start_index: int, *, attempts: int = 3) -> list[dict[str, Any]]:
+        """Fetch one page of the current session's search results.
+
+        Retries a transient server-side failure before giving up. Observed in a
+        real crawl: one ``504 Gateway Time-out`` in about 1.500 requests, with
+        the very next request succeeding. Without a retry that page's ten
+        sumarios are simply lost, and the crawl has no way to know it.
+
+        A 401 is not transient -- it means the session lost the search -- so it
+        propagates immediately for the caller to handle by re-running it.
+        """
+        last: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                r = await self.client.get(
+                    f"{BASE}/consultaSumarios/paginarSumarios.html",
+                    params={"startIndex": start_index},
+                )
+            except httpx.TransportError as exc:
+                last = exc
+            else:
+                if r.status_code == 401:
+                    raise SessionExpiredError(start_index)
+                if r.status_code < 500:
+                    r.raise_for_status()
+                    data = r.json()
+                    return data if isinstance(data, list) else []
+                last = httpx.HTTPStatusError(
+                    f"{r.status_code} en startIndex={start_index}", request=r.request, response=r
+                )
+
+            if attempt + 1 < attempts:
+                backoff = self.delay * (2 ** (attempt + 1))
+                log.warning(
+                    "página %s falló (%s), reintento %s/%s en %.1fs",
+                    start_index,
+                    type(last).__name__,
+                    attempt + 1,
+                    attempts - 1,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+
+        assert last is not None
+        raise last
 
     async def sumarios(
         self, volume: int, page: int | None = None, *, limit: int | None = None
