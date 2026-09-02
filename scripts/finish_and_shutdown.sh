@@ -104,4 +104,15 @@ PY
 cat "$REPORT" | tee -a data/finish.log
 
 say "apagando en $((COUNTDOWN / 60)) minutos — cancelar con:  shutdown /a"
-"$SHUTDOWN" /s /t "$COUNTDOWN" /c "Crawl del citador terminado. Cancelar con: shutdown /a"
+
+# MSYS_NO_PATHCONV es obligatorio, no una precaución. Git Bash convierte un
+# argumento que empieza con barra en una ruta de Windows, así que `/s /t 300`
+# le llega a shutdown.exe como `C:/Program Files/Git/s ...`: imprime el uso, no
+# apaga nada, y devuelve éxito. El fallo es silencioso y en la dirección
+# cómoda -- la máquina queda prendida -- pero es un fallo igual.
+MSYS_NO_PATHCONV=1 "$SHUTDOWN" /s /t "$COUNTDOWN" \
+    /c "Crawl del citador terminado. Cancelar con: shutdown /a"
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    say "shutdown.exe devolvió $rc: la máquina NO se va a apagar"
+fi
