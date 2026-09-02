@@ -30,6 +30,7 @@ from citador_ar_mcp.tools._common import (
     resolve_or_raise,
     ruling_dict,
     trim_quote,
+    when,
 )
 
 
@@ -47,12 +48,11 @@ def lookup_ruling(query: str, response_format: ResponseFormat = "markdown") -> s
     if response_format == "json":
         return as_json({"query": query, **ruling_dict(r), "aliases": aliases})
 
-    when = r.decided_on or str(r.decided_year)
     lines = [
         f"## {r.ruling_id.human}" + (f' — "{r.short_name}"' if r.short_name else ""),
         "",
         f"**Carátula:** {r.caption}",
-        f"**Fecha:** {when}",
+        f"**Fecha:** {when(r)}",
         f"**Identificador:** `{r.id}`",
         f"**Texto del fallo:** {_text_status_es(r.text_status)}",
         f"**Fuente:** {r.source_url}",

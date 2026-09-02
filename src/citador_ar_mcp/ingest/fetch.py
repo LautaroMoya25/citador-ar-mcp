@@ -69,6 +69,24 @@ _CITANTE_RE: Final = re.compile(r">\s*Fallos:\s*(\d{1,3}):(\d{1,4})\s*<")
 _TAGS_RE: Final = re.compile(r"<[^>]+>")
 
 
+def source_url_for(ruling_id: RulingId) -> str:
+    """Where a ruling can be read on the CSJN site.
+
+    A free function because the crawl needs it for rulings it has not fetched:
+    a stub node created for a citing ruling has to point at *its own* page, not
+    at the page of the ruling that cited it.
+    """
+    return (
+        f"{BASE}/consultaSumarios/buscarTomoPagina.html"
+        f"?tomo={ruling_id.volume}&pagina={ruling_id.page}"
+    )
+
+
+#: Sentinel year for a node created as the target of a citation, before the
+#: ruling itself has been crawled. Rendered as unknown rather than as year zero.
+UNKNOWN_YEAR: Final = 0
+
+
 @dataclass(frozen=True, slots=True)
 class Sumario:
     """One sumario as the CSJN publishes it, reduced to what the graph needs."""
@@ -92,10 +110,7 @@ class Sumario:
 
     @property
     def source_url(self) -> str:
-        return (
-            f"{BASE}/consultaSumarios/buscarTomoPagina.html"
-            f"?tomo={self.ruling_id.volume}&pagina={self.ruling_id.page}"
-        )
+        return source_url_for(self.ruling_id)
 
     @property
     def pdf_url(self) -> str | None:

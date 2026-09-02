@@ -39,7 +39,12 @@ from citador_ar_mcp.domain.citation import (
     short_name_key,
 )
 from citador_ar_mcp.domain.treatment import Method, Opinion, Treatment
-from citador_ar_mcp.ingest.fetch import CsjnClient, Sumario
+from citador_ar_mcp.ingest.fetch import (
+    UNKNOWN_YEAR,
+    CsjnClient,
+    Sumario,
+    source_url_for,
+)
 
 log = logging.getLogger(__name__)
 
@@ -214,8 +219,8 @@ async def crawl(conn: sqlite3.Connection, volumes: range, *, delay: float = 0.5)
                             citing.volume,
                             citing.page,
                             citing.human,
-                            0,
-                            s.source_url,
+                            UNKNOWN_YEAR,
+                            source_url_for(citing),
                             "unavailable",
                         ),
                     )
@@ -341,8 +346,8 @@ async def ingest_ruling(
                 cite.cited.volume,
                 cite.cited.page,
                 cite.cited.human,
-                0,
-                s.source_url,
+                UNKNOWN_YEAR,
+                source_url_for(cite.cited),
                 "unavailable",
             ),
         )

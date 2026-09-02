@@ -155,6 +155,21 @@ def parse_treatment(value: str | None) -> Treatment | None:
         ) from exc
 
 
+def when(r: Ruling) -> str:
+    """How to date a ruling in prose.
+
+    Three cases, and the third is the one that matters. The crawl creates a node
+    for every ruling it sees cited, including ones from tomos it has not reached,
+    and those carry a sentinel year. Rendering that as "0" would state a fact
+    that is not one.
+    """
+    if r.decided_on:
+        return r.decided_on
+    if r.decided_year > 0:
+        return str(r.decided_year)
+    return "fecha desconocida: el fallo aún no fue relevado"
+
+
 def ruling_dict(r: Ruling) -> dict[str, Any]:
     return {
         "id": r.id,
@@ -221,9 +236,8 @@ def render_page(page: Page, *, heading: str, empty: str) -> str:
         lines.append(empty)
     else:
         for r in page.items:
-            when = r.decided_on or str(r.decided_year)
             name = f' — "{r.short_name}"' if r.short_name else ""
-            lines.append(f"- **{r.ruling_id.human}**{name} ({when})")
+            lines.append(f"- **{r.ruling_id.human}**{name} ({when(r)})")
             lines.append(f"  {r.caption}")
     lines += [
         "",
