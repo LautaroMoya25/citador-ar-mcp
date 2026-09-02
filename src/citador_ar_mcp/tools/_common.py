@@ -205,6 +205,7 @@ def report_dict(report: SignalReport) -> dict[str, Any]:
         "total_citing": report.total_citing,
         "counts": {t.value: n for t, n in report.counts.items()},
         "binding_counts": {t.value: n for t, n in report.binding_counts.items()},
+        "non_binding_by_opinion": {o.value: n for o, n in report.non_binding_by_opinion.items()},
         "caveats": report.caveats,
         "evidence": [
             {

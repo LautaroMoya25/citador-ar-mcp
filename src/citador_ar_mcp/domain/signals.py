@@ -102,6 +102,14 @@ class SignalReport(BaseModel):
     """Breakdown over every treatment, binding or not."""
     binding_counts: dict[Treatment, int] = Field(default_factory=dict)
     """Breakdown restricted to majority opinions. This is what drove the signal."""
+    non_binding_by_opinion: dict[Opinion, int] = Field(default_factory=dict)
+    """Why the rest does not count, split by opinion.
+
+    Not decorative. "Written in a dissent" and "we could not tell which vote
+    this came from" are different claims, and collapsing them tells the reader
+    something about the Court that the data does not support -- which is exactly
+    what happens on a freshly crawled corpus, where every edge is unattributed.
+    """
     caveats: list[str] = Field(default_factory=list)
     """Plain-Spanish qualifications. Rendered next to the signal, never dropped."""
     evidence: list[TreatmentRecord] = Field(default_factory=list)
@@ -178,6 +186,8 @@ def aggregate(
         key=lambda r: (-r.treatment.severity, -r.confidence, -(r.decided_year or 0)),
     )[:max_evidence]
 
+    non_binding = Counter(r.opinion for r in records if not r.counts_toward_signal)
+
     return SignalReport(
         subject=subject,
         signal=signal,
@@ -185,6 +195,7 @@ def aggregate(
         total_citing=len({r.citing for r in records}),
         counts=dict(counts),
         binding_counts=dict(binding_counts),
+        non_binding_by_opinion=dict(non_binding),
         caveats=caveats,
         evidence=evidence,
     )

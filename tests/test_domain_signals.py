@@ -223,3 +223,36 @@ class TestVocabulary:
     def test_every_treatment_has_spanish_labels(self) -> None:
         for t in Treatment:
             assert t.label_es and t.description_es
+
+
+class TestNonBindingBreakdown:
+    """ "Written in a dissent" and "we cannot tell" are different claims.
+
+    Found on the first real crawl. Every edge there is unattributed, and lumping
+    them under one label reported 156 citations as coming from dissents when the
+    truth was that the vote was simply unknown.
+    """
+
+    def test_unknown_is_not_reported_as_a_dissent(self) -> None:
+        report = aggregate(SUBJECT, [rec(Treatment.MENTIONED, opinion=Opinion.UNKNOWN)])
+        assert report.non_binding_by_opinion == {Opinion.UNKNOWN: 1}
+        assert Opinion.DISSENT not in report.non_binding_by_opinion
+
+    def test_each_opinion_is_counted_separately(self) -> None:
+        records = [
+            rec(Treatment.MENTIONED, page=1, opinion=Opinion.DISSENT),
+            rec(Treatment.MENTIONED, page=2, opinion=Opinion.DISSENT),
+            rec(Treatment.MENTIONED, page=3, opinion=Opinion.CONCURRENCE),
+            rec(Treatment.MENTIONED, page=4, opinion=Opinion.DICTAMEN),
+            rec(Treatment.MENTIONED, page=5, opinion=Opinion.UNKNOWN),
+        ]
+        assert aggregate(SUBJECT, records).non_binding_by_opinion == {
+            Opinion.DISSENT: 2,
+            Opinion.CONCURRENCE: 1,
+            Opinion.DICTAMEN: 1,
+            Opinion.UNKNOWN: 1,
+        }
+
+    def test_majority_citations_are_not_in_the_breakdown(self) -> None:
+        report = aggregate(SUBJECT, [rec(Treatment.FOLLOWED, opinion=Opinion.MAJORITY)])
+        assert report.non_binding_by_opinion == {}

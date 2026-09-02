@@ -95,11 +95,13 @@ def check_status(ruling: str, response_format: ResponseFormat = "markdown") -> s
             for t, n in sorted(report.binding_counts.items(), key=lambda kv: -kv[0].severity)
         )
         lines.append(f"**Tratamiento por la mayoría:** {detail}")
-    non_binding = {t: n - report.binding_counts.get(t, 0) for t, n in report.counts.items()}
-    non_binding = {t: n for t, n in non_binding.items() if n}
-    if non_binding:
-        detail = ", ".join(f"{t.label_es} {n}" for t, n in non_binding.items())
-        lines.append(f"**En votos propios o disidencias:** {detail}")
+    if report.non_binding_by_opinion:
+        # Split by opinion, not lumped. "Written in a dissent" and "we could not
+        # tell which vote this came from" are different claims about the Court.
+        detail = ", ".join(
+            f"{o.label_es} {n}" for o, n in sorted(report.non_binding_by_opinion.items())
+        )
+        lines.append(f"**Citas que no cuentan para la señal:** {detail}")
 
     if report.caveats:
         lines += ["", "### Advertencias"]
