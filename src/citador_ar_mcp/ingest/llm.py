@@ -188,6 +188,41 @@ class Budget:
         )
 
 
+def _client_kwargs() -> dict[str, object]:
+    """Extra client settings the account may require.
+
+    An identity-linked API key is scoped to a workspace and the API rejects a
+    request that does not name one, with a 400 rather than a 401 -- it is not an
+    authentication failure, so it is easy to misread as one. Set
+    ``ANTHROPIC_WORKSPACE_ID`` and it travels as a header.
+    """
+    workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID", "").strip()
+    if not workspace:
+        return {}
+    return {"default_headers": {"anthropic-workspace-id": workspace}}
+
+
+def diagnose() -> str | None:
+    """``None`` when the stage can run, otherwise why it cannot, in one line.
+
+    Separate from :func:`available` because the reason matters: "no credential",
+    "the key needs a workspace id" and "the network is down" call for three
+    different fixes, and collapsing them into a boolean throws away the only
+    part the operator can act on.
+    """
+    try:
+        import anthropic
+    except ImportError:
+        return "falta el paquete 'anthropic': uv sync --extra llm"
+    try:
+        client = anthropic.Anthropic(max_retries=0, timeout=15.0, **_client_kwargs())  # type: ignore[arg-type]
+        client.messages.count_tokens(model=MODEL, messages=[{"role": "user", "content": "ping"}])
+    except Exception as exc:
+        message = getattr(exc, "message", None) or str(exc)
+        return f"{type(exc).__name__}: {message[:300]}"
+    return None
+
+
 def available() -> bool:
     """Whether the LLM stage can actually run.
 
@@ -244,7 +279,7 @@ class ClaudeTreatmentClassifier:
         import anthropic
 
         self._anthropic = anthropic
-        self._client = anthropic.Anthropic()
+        self._client = anthropic.Anthropic(**_client_kwargs())  # type: ignore[arg-type]
         self._model = model
         self._effort = effort
         self._max_confidence = max_confidence

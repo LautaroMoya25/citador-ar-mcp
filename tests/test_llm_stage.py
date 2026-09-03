@@ -182,3 +182,40 @@ class TestAvailability:
         assert "count_tokens" in source
         assert "messages.create" not in source
         assert "messages.parse" not in source
+
+
+class TestDiagnosis:
+    """Why the stage cannot run matters more than that it cannot.
+
+    A real key came back with a 400 saying it was identity-linked and needed a
+    workspace id. `available()` reported False, which read as "no credential"
+    and sent the search in the wrong direction: the key was fine.
+    """
+
+    def test_a_missing_workspace_sends_no_header(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ANTHROPIC_WORKSPACE_ID", raising=False)
+        assert llm._client_kwargs() == {}
+
+    def test_a_configured_workspace_travels_as_a_header(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", "wrkspc_abc")
+        assert llm._client_kwargs() == {"default_headers": {"anthropic-workspace-id": "wrkspc_abc"}}
+
+    def test_whitespace_only_is_not_a_workspace(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", "   ")
+        assert llm._client_kwargs() == {}
+
+    def test_a_missing_sdk_is_reported_as_such(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import builtins
+
+        real = builtins.__import__
+
+        def fake(name: str, *a: object, **k: object) -> object:
+            if name == "anthropic":
+                raise ImportError(name)
+            return real(name, *a, **k)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(builtins, "__import__", fake)
+        problem = llm.diagnose()
+        assert problem is not None and "uv sync --extra llm" in problem
