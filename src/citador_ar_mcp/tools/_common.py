@@ -13,12 +13,22 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from typing import Any, Final, Literal
+from collections.abc import Callable
+from functools import wraps
+from typing import Any, Final, Literal, TypeVar, cast
+
+from mcp.server.mcpserver.exceptions import ToolError
 
 from citador_ar_mcp.config import MAX_LIMIT
 from citador_ar_mcp.domain.signals import SignalReport
 from citador_ar_mcp.domain.treatment import Treatment
-from citador_ar_mcp.store.queries import Page, Ruling, resolve, suggest
+from citador_ar_mcp.store.queries import (
+    GraphUnavailableError,
+    Page,
+    Ruling,
+    resolve,
+    suggest,
+)
 
 ResponseFormat = Literal["markdown", "json"]
 
@@ -46,8 +56,40 @@ MAX_TRACE_STEPS: Final = 40
 TRACE_QUOTE_CHARS: Final = 320
 
 
-class CitadorError(ValueError):
-    """A tool failure whose message tells the caller what to do next."""
+class CitadorError(ToolError):
+    """A tool failure whose message tells the caller what to do next.
+
+    The base class is load-bearing, not decoration. The SDK re-raises a
+    ``ToolError`` with its text intact and replaces everything else with a bare
+    "Error executing tool <name>", keeping the original message on the server.
+    While this inherited from ``ValueError``, every actionable error the project
+    writes -- including the "¿Quisiste decir Fallos: 308:1392?" that CLAUDE.md
+    section 4 gives as *the* example of what a good error looks like -- was
+    thrown away one frame before reaching the model. The tests never saw it
+    because they call ``citator.*`` directly, below the MCP layer.
+    """
+
+
+F = TypeVar("F", bound=Callable[..., str])
+
+
+def as_tool_error(fn: F) -> F:
+    """Turn a missing graph into a failure the caller can act on.
+
+    :class:`~citador_ar_mcp.store.queries.GraphUnavailableError` already carries
+    the command that builds the graph; it just has the wrong base class to
+    survive the trip. Converting it here keeps ``store/`` free of any dependency
+    on the MCP SDK, which is where the layering rule wants it.
+    """
+
+    @wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> str:
+        try:
+            return fn(*args, **kwargs)
+        except GraphUnavailableError as exc:
+            raise CitadorError(str(exc)) from exc
+
+    return cast(F, wrapper)
 
 
 def clamp_limit(limit: int) -> int:

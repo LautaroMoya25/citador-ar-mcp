@@ -20,6 +20,7 @@ from citador_ar_mcp.tools._common import (
     CitadorError,
     ResponseFormat,
     as_json,
+    as_tool_error,
     clamp_limit,
     clamp_offset,
     page_dict,
@@ -34,6 +35,7 @@ from citador_ar_mcp.tools._common import (
 )
 
 
+@as_tool_error
 def lookup_ruling(query: str, response_format: ResponseFormat = "markdown") -> str:
     """Resolve any written form of a citation to a single ruling."""
     with queries.connect() as conn:
@@ -63,6 +65,7 @@ def lookup_ruling(query: str, response_format: ResponseFormat = "markdown") -> s
     return "\n".join(lines)
 
 
+@as_tool_error
 def check_status(ruling: str, response_format: ResponseFormat = "markdown") -> str:
     """Is this ruling still good law? The aggregate signal, with its evidence."""
     with queries.connect() as conn:
@@ -129,6 +132,7 @@ def check_status(ruling: str, response_format: ResponseFormat = "markdown") -> s
     return "\n".join(lines)
 
 
+@as_tool_error
 def citing_rulings(
     ruling: str,
     treatment: str | None = None,
@@ -162,6 +166,7 @@ def citing_rulings(
     )
 
 
+@as_tool_error
 def cited_rulings(
     ruling: str,
     offset: int = 0,
@@ -187,6 +192,7 @@ def cited_rulings(
     )
 
 
+@as_tool_error
 def trace_doctrine(
     ruling: str,
     max_depth: int = 3,

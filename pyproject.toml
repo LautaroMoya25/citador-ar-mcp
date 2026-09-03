@@ -9,11 +9,17 @@ authors = [{ name = "Lautaro Moya" }]
 keywords = ["mcp", "legal", "argentina", "csjn", "jurisprudence", "citator"]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: Console",
     "Intended Audience :: Legal Industry",
     "License :: OSI Approved :: MIT License",
+    "Natural Language :: Spanish",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Topic :: Sociology :: History",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Text Processing :: Linguistic",
+    "Typing :: Typed",
 ]
 dependencies = [
     "mcp[cli]>=1.2.0",
@@ -44,8 +50,12 @@ ocr = [
 citador-ar-mcp = "citador_ar_mcp.server:main"
 
 [project.urls]
-Homepage = "https://github.com/lautaromoya/citador-ar-mcp"
-Repository = "https://github.com/lautaromoya/citador-ar-mcp"
+Homepage = "https://github.com/LautaroMoya25/citador-ar-mcp"
+Repository = "https://github.com/LautaroMoya25/citador-ar-mcp"
+Issues = "https://github.com/LautaroMoya25/citador-ar-mcp/issues"
+Changelog = "https://github.com/LautaroMoya25/citador-ar-mcp/blob/master/CHANGELOG.md"
+# El grafo no viaja en el paquete: pesa 41 MB y se baja de acá.
+"Corpus (release)" = "https://github.com/LautaroMoya25/citador-ar-mcp/releases/latest"
 
 [build-system]
 requires = ["hatchling"]

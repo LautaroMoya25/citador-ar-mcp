@@ -164,3 +164,65 @@ class TestTraceDoctrine:
         for s in data["steps"]:
             assert s["quote"].strip()
             assert 0.0 <= s["confidence"] <= 1.0
+
+
+class TestErrorsSurviveTheMcpBoundary:
+    """The actionable message has to reach the *client*, not just the caller.
+
+    Every other test in this file calls ``citator.*`` directly, one layer below
+    the server -- and that is exactly how this shipped broken. The SDK re-raises
+    a ``ToolError`` with its text intact and replaces anything else with a bare
+    "Error executing tool <name>", keeping the original on the server. Because
+    ``CitadorError`` inherited from ``ValueError``, every actionable error the
+    project writes was discarded one frame before the model could read it, and
+    the whole suite stayed green.
+
+    So these go through ``call_tool`` and ``read_resource``, the way a client
+    does. A test that stops short of the boundary cannot see the bug that lives
+    on it.
+    """
+
+    async def test_a_failed_resolution_reaches_the_client_with_its_suggestion(self) -> None:
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        from citador_ar_mcp.server import mcp
+
+        with pytest.raises(ToolError) as exc:
+            await mcp.call_tool("citador_lookup_ruling", {"query": "Fallos 308:1932"})
+        assert "308:1392" in str(exc.value), "se perdió la sugerencia"
+
+    async def test_an_invalid_treatment_names_the_valid_ones(self) -> None:
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        from citador_ar_mcp.server import mcp
+
+        with pytest.raises(ToolError) as exc:
+            await mcp.call_tool(
+                "citador_citing_rulings", {"ruling": "Arriola", "treatment": "inventado"}
+            )
+        assert "abandoned" in str(exc.value)
+
+    async def test_a_missing_graph_tells_the_client_how_to_build_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The first thing anyone installing from PyPI hits."""
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        from citador_ar_mcp.server import mcp
+
+        monkeypatch.setenv("CITADOR_DB", str(tmp_path / "no-existe.db"))
+        with pytest.raises(ToolError) as exc:
+            await mcp.call_tool("citador_check_status", {"ruling": "Arriola"})
+        assert "build_graph" in str(exc.value)
+
+    async def test_the_corpus_resource_says_the_same_thing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mcp.server.mcpserver.exceptions import ResourceError
+
+        from citador_ar_mcp.server import mcp
+
+        monkeypatch.setenv("CITADOR_DB", str(tmp_path / "no-existe.db"))
+        with pytest.raises(ResourceError) as exc:
+            await mcp.read_resource("citador://corpus")
+        assert "build_graph" in str(exc.value)

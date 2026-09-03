@@ -9,18 +9,28 @@ meaningless depends entirely on how much of the corpus is loaded.
 
 from __future__ import annotations
 
+from mcp.server.mcpserver.exceptions import ResourceError
+
 from citador_ar_mcp.store import queries
 
 
 def status() -> str:
     """Render the corpus provenance: source, build date, size and gaps."""
-    with queries.connect() as conn:
-        meta = queries.corpus_meta(conn)
-        rulings = conn.execute("SELECT count(*) FROM rulings").fetchone()[0]
-        citations = conn.execute("SELECT count(*) FROM citations").fetchone()[0]
-        by_status = dict(
-            conn.execute("SELECT text_status, count(*) FROM rulings GROUP BY text_status")
-        )
+    # `connect` is a @contextmanager, so a missing file raises on __enter__ and
+    # not on the call: the `try` has to wrap the `with`, not the construction.
+    # Same trap as the tools -- the SDK keeps a ResourceError's text and replaces
+    # anything else with "Error reading resource", so the instructions for
+    # building the graph would never reach the reader.
+    try:
+        with queries.connect() as conn:
+            meta = queries.corpus_meta(conn)
+            rulings = conn.execute("SELECT count(*) FROM rulings").fetchone()[0]
+            citations = conn.execute("SELECT count(*) FROM citations").fetchone()[0]
+            by_status = dict(
+                conn.execute("SELECT text_status, count(*) FROM rulings GROUP BY text_status")
+            )
+    except queries.GraphUnavailableError as exc:
+        raise ResourceError(str(exc)) from exc
 
     lines = [
         "# Estado del corpus",
