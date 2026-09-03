@@ -206,3 +206,81 @@ class TestFormulasFromTheRealCorpus:
             "resolvió el caso (Fallos: 331:1530)"
         )
         assert treatment_of(quote, at=quote.find("331:1530")) is not Treatment.APPLIED
+
+
+class TestFormulasMinedFromTheCorpus:
+    """Rules derived by reading 9.168 real passages, not by inventing patterns.
+
+    scripts/mine_formulas.py ranks the phrases that recur around a citation,
+    anchored on verb stems because a treatment in Spanish is carried by a verb.
+    Most of what it surfaced was a false friend and was rejected; these are the
+    ones that survived reading the passages they came from.
+    """
+
+    def test_a_precedent_invoked_for_its_holding_is_applied(self) -> None:
+        quote = (
+            "Que cabe recordar que en el precedente de Fallos: 308:789, este "
+            "Tribunal sostuvo que cuando un órgano periodístico difunde una "
+            "información que podría tener entidad difamatoria"
+        )
+        assert treatment_of(quote, at=quote.find("308:789")) is Treatment.APPLIED
+
+    def test_the_courts_own_settled_doctrine_is_applied(self) -> None:
+        quote = (
+            "el a quo construyó una nulidad en abierta contradicción a la "
+            "doctrina sentada por esta Corte (Fallos: 295:961)"
+        )
+        assert treatment_of(quote, at=quote.find("295:961")) is Treatment.APPLIED
+
+    def test_a_binding_doctrine_is_applied(self) -> None:
+        quote = "obliga la doctrina precedentemente citada (Fallos: 332:2813)"
+        assert treatment_of(quote, at=quote.find("332:2813")) is Treatment.APPLIED
+
+    def test_narrowing_the_reach_of_a_criterion_is_limited(self) -> None:
+        quote = (
+            "se ha manifestado que dicho criterio no resulta aplicable cuando la "
+            "información no se refiere a funcionarios o figuras públicas "
+            "(Fallos: 330:3685)"
+        )
+        assert treatment_of(quote, at=quote.find("330:3685")) is Treatment.LIMITED
+
+
+class TestFalseFriendsTheMiningExposed:
+    """Frequent phrases that look like treatment and are not.
+
+    Each of these ranked high in the mining and was rejected after reading the
+    passages. They are kept as tests because the next person to extend the rule
+    set will find them just as tempting.
+    """
+
+    def test_shared_powers_are_not_shared_reasoning(self) -> None:
+        """ "compartidas" here is about federal competences, not about agreeing."""
+        quote = (
+            "debe evitarse que los estados abusen en el ejercicio de esas "
+            "competencias, tanto si son propias como si son compartidas o "
+            "concurrentes (Fallos: 340:1695)"
+        )
+        assert treatment_of(quote, at=quote.find("340:1695")) is Treatment.MENTIONED
+
+    def test_a_case_that_must_be_decided_is_not_a_case_that_was_followed(self) -> None:
+        quote = (
+            "constituye un presupuesto necesario que exista un caso o "
+            "controversia que deba ser resuelto por el Tribunal (Fallos: 323:4098)"
+        )
+        assert treatment_of(quote, at=quote.find("323:4098")) is Treatment.MENTIONED
+
+    def test_the_rule_about_departing_is_not_a_departure(self) -> None:
+        """The Court stating when departure is permissible, citing in support."""
+        quote = (
+            "se estableció que el Tribunal no podría apartarse de su doctrina "
+            "sino sobre la base de causas suficientemente graves (Fallos: 183:409)"
+        )
+        assert treatment_of(quote, at=quote.find("183:409")) is not Treatment.ABANDONED
+
+    def test_not_departing_from_a_statutes_text_is_not_departing_from_a_precedent(
+        self,
+    ) -> None:
+        quote = (
+            "Cuando la letra de una norma es clara no cabe apartarse de su texto (Fallos: 327:5614)"
+        )
+        assert treatment_of(quote, at=quote.find("327:5614")) is not Treatment.ABANDONED

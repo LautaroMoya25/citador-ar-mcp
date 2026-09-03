@@ -198,6 +198,33 @@ RULES: Final[tuple[Rule, ...]] = (
         r"(?:resulta|es)\s+(?:de\s+)?aplicaci[óo]n|resulta\s+aplicable\s+(?:la\s+doctrina|el)",
         0.75,
     ),
+    _rule(
+        Treatment.APPLIED,
+        "precedente-invocado",
+        # `en el precedente de Fallos: 308:789, este Tribunal sostuvo que...`
+        # The commonest way the Court reaches for a holding and uses it, 83
+        # occurrences in the mined sample. The optional adjectives ("tradicional",
+        # "citado") and the publication wording ("publicado en", "registrado en")
+        # are variants of the same move.
+        r"(?:en\s+el|el|del|al)\s+(?:tradicional\s+|citado\s+|conocido\s+|mencionado\s+)?"
+        r"precedentes?\s+(?:publicado\s+en\s+|registrado\s+en\s+|de\s+)?",
+        0.70,
+    ),
+    _rule(
+        Treatment.APPLIED,
+        "doctrina-sentada-por-la-corte",
+        # `en abierta contradicción a la doctrina sentada por esta Corte
+        # (Fallos: ...)` -- the Court affirming its own line against a lower
+        # court that departed from it.
+        r"doctrina\s+sentada\s+por\s+(?:esta\s+Corte|el\s+Tribunal|este\s+Tribunal)",
+        0.75,
+    ),
+    _rule(
+        Treatment.APPLIED,
+        "obliga-la-doctrina",
+        r"obliga\s+la\s+doctrina",
+        0.78,
+    ),
     # --- distinguished ---------------------------------------------------
     _rule(
         Treatment.DISTINGUISHED,
@@ -218,6 +245,16 @@ RULES: Final[tuple[Rule, ...]] = (
         "limitar-el-alcance",
         r"(?:limitar|circunscribir|restringir|acotar)\s+(?:el\s+alcance|los\s+alcances)",
         0.80,
+    ),
+    _rule(
+        Treatment.LIMITED,
+        "no-resulta-aplicable-cuando",
+        # `dicho criterio no resulta aplicable cuando la información no se
+        # refiere a funcionarios públicos` -- narrowing the precedent's reach
+        # rather than departing from it. The one genuine narrowing found in
+        # 9.168 mined passages.
+        r"no\s+(?:resulta|es)\s+aplicable\s+cuando",
+        0.75,
     ),
     _rule(
         Treatment.LIMITED,

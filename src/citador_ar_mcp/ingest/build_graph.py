@@ -35,6 +35,7 @@ from typing import Any
 from citador_ar_mcp.config import DEFAULT_DB_PATH, SCHEMA_PATH, configure_logging
 from citador_ar_mcp.domain.citation import (
     RulingId,
+    find_fallos_citations,
     normalize_caption,
     normalize_expediente,
     short_name_key,
@@ -498,6 +499,44 @@ async def _ingest_one(
     return found, classified
 
 
+def reclassify_stored(conn: sqlite3.Connection) -> tuple[int, int]:
+    """Re-run the rules over passages already in the graph. Returns ``(seen, changed)``.
+
+    The rule set grows as the corpus is read, and every improvement would
+    otherwise mean re-downloading thousands of PDFs to see it. The passages are
+    already stored; only the reading of them was out of date.
+
+    Touches only rows still at fallback confidence. A row a rule or a person has
+    already spoken for is left alone -- re-running must never quietly overwrite
+    a judgement with a weaker one.
+    """
+    from citador_ar_mcp.ingest.treatment import classify_passage
+
+    rows = conn.execute(
+        """SELECT citing_id, cited_id, quote FROM citations
+           WHERE confidence <= ? AND quote NOT LIKE 'Referencia publicada por la CSJN%'""",
+        (UNCLASSIFIED_CONFIDENCE + 0.05,),
+    ).fetchall()
+
+    changed = 0
+    for citing, cited, quote in rows:
+        position = next(
+            (c.start for c in find_fallos_citations(quote) if str(c.ruling_id) == cited),
+            None,
+        )
+        result = classify_passage(quote, citation_position=position, cited=cited)
+        if result.is_fallback:
+            continue
+        conn.execute(
+            "UPDATE citations SET treatment = ?, confidence = ?, method = ? "
+            "WHERE citing_id = ? AND cited_id = ? AND quote = ?",
+            (result.treatment.value, result.confidence, result.method.value, citing, cited, quote),
+        )
+        changed += 1
+    conn.commit()
+    return len(rows), changed
+
+
 def citers_of_top(conn: sqlite3.Connection, n: int) -> list[str]:
     """Every ruling that cites one of the ``n`` most-cited rulings.
 
@@ -630,19 +669,37 @@ def main(argv: list[str] | None = None) -> int:
             "Es lo que hace falta para que esos N dejen de estar en gris."
         ),
     )
+    ap.add_argument(
+        "--reclassify",
+        action="store_true",
+        help=(
+            "re-aplicar las reglas a los pasajes ya guardados, sin red. "
+            "Para cuando el set de reglas mejora."
+        ),
+    )
     ap.add_argument("--cache", type=Path, default=DEFAULT_DB_PATH.parent / "cache")
     ap.add_argument("--delay", type=float, default=0.5, help="segundos entre pedidos")
     args = ap.parse_args(argv)
 
-    if not (args.from_fixture or args.tomos or args.ruling or args.classify_citers_of_top):
-        ap.error("elegí --from-fixture, --tomos, --ruling o --classify-citers-of-top")
+    if not (
+        args.from_fixture
+        or args.tomos
+        or args.ruling
+        or args.classify_citers_of_top
+        or args.reclassify
+    ):
+        ap.error("elegí --from-fixture, --tomos, --ruling, --classify-citers-of-top o --reclassify")
 
     args.db.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(args.db)
     try:
         conn.execute("PRAGMA foreign_keys = ON")
         create_schema(conn)
-        if args.from_fixture:
+        if args.reclassify:
+            seen, edges = reclassify_stored(conn)
+            rulings = 0
+            log.info("re-leídos %s pasajes, %s pasaron a tener tratamiento", seen, edges)
+        elif args.from_fixture:
             rulings, edges = load_fixture(conn)
         elif args.classify_citers_of_top:
             targets = citers_of_top(conn, args.classify_citers_of_top)
