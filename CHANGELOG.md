@@ -2,10 +2,29 @@
 
 Formato de [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
-## [No publicado]
+## [0.1.1] - 2026-09-03
 
-Primera implementación completa. Todavía sin publicar en PyPI ni en el MCP
-Registry, y sin release del `.db`.
+### Cambiado
+
+- Se quitaron del repositorio los dos documentos de trabajo internos, junto con
+  las veinticinco referencias que el código, el esquema y los tests hacían a
+  ellos. Donde la referencia era sólo un puntero, se fue el puntero; donde
+  cargaba contenido, el contenido quedó escrito en su lugar.
+
+### Corregido
+
+- Los errores accionables no llegaban al cliente. El SDK conserva el texto de un
+  `ToolError` y reemplaza cualquier otra excepción por `Error executing tool`,
+  así que toda la mensajería útil —incluida la que explica cómo generar el
+  grafo, que es lo primero que ve quien instala— se perdía antes de llegar al
+  modelo. Alcanzaba la clase base equivocada para provocarlo.
+- Las URLs del paquete apuntaban a un usuario de GitHub inexistente.
+- El CI disparaba en `main`, rama que no existe en este repositorio, y por eso
+  nunca se había ejecutado.
+
+## [0.1.0] - 2026-09-03
+
+Primera implementación completa. Retirada de PyPI y reemplazada por 0.1.1.
 
 ### Agregado
 

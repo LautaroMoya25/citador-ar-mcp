@@ -1,6 +1,6 @@
 [project]
 name = "citador-ar-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP server that answers whether a CSJN ruling is still good law, by building and classifying the citation graph."
 readme = "README.md"
 requires-python = ">=3.11"
