@@ -151,6 +151,38 @@ Medido contra la fuente el 1 de septiembre de 2026:
 
 Ver `FASE-0-legal.md` para el detalle de la verificación.
 
+### Qué trae el corpus publicado
+
+El `.db` del release se crawleó el 2 de septiembre de 2026 sobre los **tomos
+330-349** (2007-2026). Los números de portada halagan al archivo, así que van
+con su letra chica:
+
+| | |
+|---|---|
+| Nodos | 7.953 — de los cuales **5.325** son fallos crawleados y **2.628** son *stubs* |
+| Aristas de cita | 73.611 |
+| Con postura distinta de `mentioned` | **1.513 (2,1 %)** |
+| Atribuidas a un voto | 10.444 (14,2 %), de las cuales 7.157 a la mayoría |
+| Con texto propio | 391 (387 extraídos del PDF, 4 por OCR) |
+
+Tres cosas que conviene entender antes de confiar en una respuesta:
+
+- **Un *stub* no es un fallo.** Es una posición real en la colección, citada
+  desde adentro del rango pero ubicada afuera, de la que sólo se conoce la cita.
+  No tiene texto ni carátula completa. Contarlos junto a los fallos crawleados
+  infla el corpus a la mitad, y por eso van separados.
+- **Las aristas las publica la propia Corte**, en el campo `linksCitantes` de
+  cada sumario. El grafo es ancho porque no depende de encontrar la cita en el
+  texto; la clasificación es fina porque sí.
+- **El 97,9 % de las aristas quedó en `mentioned`.** Eso no significa "citado sin
+  tomar postura": significa *no clasificado*. La distinción es la diferencia
+  entre una señal gris que informa y una que tranquiliza sin motivo, y las tools
+  la dicen en cada respuesta con esa palabra.
+
+Todo esto está grabado en `corpus_meta` dentro del propio archivo, lo calcula el
+pipeline y lo devuelve la resource `citador://corpus`. No es un dato de folleto:
+si regenerás el grafo, los números se recalculan solos.
+
 ## Limitaciones del método
 
 Estas no son bugs pendientes. Son límites de lo que un citador construido sobre
@@ -186,6 +218,20 @@ dorada, que no requiere red:
 
 ```bash
 uv run python -m citador_ar_mcp.ingest.build_graph --from-fixture
+```
+
+Eso son cuatro fallos: alcanza para probar el servidor y correr las evals, no
+para investigar. El corpus completo se baja del release (41 MB):
+
+```bash
+gh release download v0.1.0 --repo LautaroMoya25/citador-ar-mcp --pattern corpus.db --dir data
+```
+
+También está en [la página de releases](https://github.com/LautaroMoya25/citador-ar-mcp/releases).
+Como el nombre no coincide con el default, apuntá el servidor al archivo:
+
+```bash
+export CITADOR_DB="$PWD/data/corpus.db"
 ```
 
 Si falta, el servidor levanta igual y lista sus tools: el error de cada llamada
