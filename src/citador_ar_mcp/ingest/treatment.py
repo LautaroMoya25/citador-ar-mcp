@@ -30,7 +30,7 @@ corresponde apartarse" as often as "corresponde apartarse":
   capped at :data:`ATTRIBUTED_CONFIDENCE`.
 
 Where no rule fires, the answer is ``mentioned`` at low confidence. That is the
-instruction in CLAUDE.md section 8 and it is also the only safe default: an
+instruction, and it is also the only safe default: an
 unclassified edge is visible in the detail and cannot move a signal, while a
 guessed one silently poisons the result.
 """

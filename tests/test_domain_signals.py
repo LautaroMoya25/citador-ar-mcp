@@ -76,7 +76,7 @@ class TestSignalDirection:
 
 class TestConservativeGuards:
     def test_a_dissent_cannot_turn_the_light_red(self) -> None:
-        """CLAUDE.md section 5: a citation in a dissent is not the Court's doctrine."""
+        """A citation in a dissent is not the Court's doctrine."""
         report = aggregate(SUBJECT, [rec(Treatment.ABANDONED, opinion=Opinion.DISSENT)])
         assert report.signal is not Signal.RED
         assert report.counts[Treatment.ABANDONED] == 1

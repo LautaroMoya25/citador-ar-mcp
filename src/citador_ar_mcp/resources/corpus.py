@@ -1,6 +1,6 @@
 """The ``citador://corpus`` resource: what the loaded graph actually covers.
 
-Separate from ``server.py``, which is registration only (CLAUDE.md, section 2).
+Separate from ``server.py``, which is registration only.
 
 This exists because every other answer the server gives is relative to it. A
 grey signal means "no treatment recorded", and whether that is reassuring or

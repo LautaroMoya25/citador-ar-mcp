@@ -15,3 +15,7 @@ data/*.db-shm
 data/cache/
 data/*.log
 data/INFORME-FINAL.txt
+
+# Contratos de trabajo: quedan en local, no se publican.
+CLAUDE.md
+FASE-0-legal.md

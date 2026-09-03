@@ -9,7 +9,7 @@ Two rules govern this module and are enforced by the tests:
 
 1. **``ABANDONED`` is the red light and must be the most conservative label.**
    When in doubt the answer is ``MENTIONED`` with low confidence, never
-   ``ABANDONED``. See CLAUDE.md, section 8.
+   ``ABANDONED``.
 2. **A treatment written in a dissent is not the doctrine of the Court.**
    Every treatment therefore carries the :class:`Opinion` it was written in, and
    anything that is not the majority is excluded from the aggregate signal.

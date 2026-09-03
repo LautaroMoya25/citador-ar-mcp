@@ -3,7 +3,7 @@
 Every tool is read-only, so ``destructive_hint`` is ``False`` everywhere and
 ``read_only_hint`` is ``True`` everywhere. ``open_world_hint`` is ``False``
 because the server answers from a local SQLite file built offline; it never
-reaches the network. That is the point of the split in CLAUDE.md section 2.
+reaches the network. That is the point of the split.
 """
 
 from __future__ import annotations

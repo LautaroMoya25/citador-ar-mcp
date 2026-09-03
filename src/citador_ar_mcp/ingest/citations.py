@@ -15,7 +15,7 @@ so a parser that does not rejoin them finds no headings at all and silently
 attributes the whole document to the majority. :func:`join_page_breaks` fixes
 this before anything else runs.
 
-**Vote attribution.** CLAUDE.md section 5: *a citation in a dissent is not the
+**Vote attribution.** *A citation in a dissent is not the
 doctrine of the tribunal; mark it or the citator lies.* The CSJN prints the
 majority first and then each separate opinion under its own heading, so the
 opinion a citation belongs to is the heading that most recently preceded it.
@@ -187,7 +187,7 @@ def find_citations(text: str, *, exclude: RulingId | None = None) -> list[FoundC
         span = opinion_at(spans, cite.start)
         quote = quote_around(text, cite)
         if not quote:
-            continue  # no quote, no row. CLAUDE.md section 5.
+            continue  # no quote, no row
         out.append(
             FoundCitation(
                 cited=cite.ruling_id,

@@ -1,6 +1,6 @@
 """Aggregation: N treatments into one signal, without ever losing the detail.
 
-The rule that shapes this module is in CLAUDE.md, section 5: *a ruling can be
+The rule that shapes this module: *a ruling can be
 abandoned on one point and still good law on another*, so the aggregate can
 never be a bare value. :class:`SignalReport` therefore always carries the
 per-treatment breakdown and the caveats that qualify it, and the tools are
@@ -76,7 +76,7 @@ class TreatmentRecord(BaseModel):
 
     ``quote`` is not decorative. Every claim the citator makes has to be
     auditable against the text that produced it, so a record without a passage
-    is not a record (CLAUDE.md, section 5).
+    is not a record.
     """
 
     model_config = ConfigDict(frozen=True)

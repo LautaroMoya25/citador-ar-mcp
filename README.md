@@ -132,7 +132,9 @@ un proyecto de años; el recorte tiene razones, no excusas:
 
 - **No es asesoramiento legal.** Es una herramienta de investigación.
 - **No busca personas ni partes.** El eje es el precedente.
-- **No cubre expedientes del PJN.** Ver `FASE-0-legal.md`.
+- **No cubre expedientes del PJN.** Verificación anti-bot antes de cada búsqueda,
+  fueros restringidos y nombres de partes en litigio: es un problema de datos
+  personales, no una limitación técnica.
 - **No compite con Westlaw en cobertura.** Compite en ser abierto y auditable.
 
 ## Cobertura del corpus
@@ -151,8 +153,6 @@ Medido contra la fuente el 1 de septiembre de 2026:
   informan. **El OCR se equivoca**, sobre todo con impresiones de los años 70 y
   80, así que un pasaje puede traer erratas. Está declarado justamente para que
   quien verifique la cita sepa contra qué la está verificando.
-
-Ver `FASE-0-legal.md` para el detalle de la verificación.
 
 ### Qué trae el corpus publicado
 

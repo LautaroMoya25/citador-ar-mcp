@@ -1,6 +1,6 @@
 """Shared plumbing for the tools: resolution, errors, and rendering.
 
-The rules in CLAUDE.md section 4 are implemented here once rather than in each
+The rules below are implemented here once rather than in each
 tool, so they cannot drift apart:
 
 * every response can be ``markdown`` (default) or ``json``;
@@ -63,8 +63,8 @@ class CitadorError(ToolError):
     ``ToolError`` with its text intact and replaces everything else with a bare
     "Error executing tool <name>", keeping the original message on the server.
     While this inherited from ``ValueError``, every actionable error the project
-    writes -- including the "¿Quisiste decir Fallos: 308:1392?" that CLAUDE.md
-    section 4 gives as *the* example of what a good error looks like -- was
+    writes -- including the "¿Quisiste decir Fallos: 308:1392?" that is *the*
+    example of what a good error here looks like -- was
     thrown away one frame before reaching the model. The tests never saw it
     because they call ``citator.*`` directly, below the MCP layer.
     """

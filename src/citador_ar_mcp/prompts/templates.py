@@ -1,7 +1,7 @@
 """Prompt bodies.
 
 They live here rather than in ``server.py`` because a prompt body is content,
-and ``server.py`` is registration only (CLAUDE.md, section 2).
+and ``server.py`` is registration only.
 """
 
 from __future__ import annotations

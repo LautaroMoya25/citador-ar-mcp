@@ -51,7 +51,7 @@ HOME: Final = "https://sj.csjn.gov.ar/homeSJ"
 BASE: Final = "https://sjconsulta.csjn.gov.ar/sjconsulta"
 
 #: Identifies the crawler to the source, with a link back to the repo, as agreed
-#: in CLAUDE.md section 5. Do not remove the URL.
+#: Do not remove the URL.
 USER_AGENT: Final = (
     "citador-ar-mcp/0.1 (+https://github.com/lautaromoya/citador-ar-mcp) "
     "research citator; contact via repository issues"

@@ -3,7 +3,7 @@
 Every function here opens the database in read-only mode. The tools must not be
 able to write: the graph is a build artefact produced offline by ``ingest/`` and
 shipped as a file, so a write path from a tool would mean the answers change
-between calls (CLAUDE.md, section 2).
+between calls.
 """
 
 from __future__ import annotations

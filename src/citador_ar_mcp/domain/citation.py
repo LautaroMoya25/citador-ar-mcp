@@ -8,7 +8,7 @@ The same CSJN precedent is written in at least four ways in the wild::
     CSJ 001086/2022/CS001     the modern docket number
 
 Only the first is a stable, parseable identifier, which is why the citator is
-scoped to the Court (see FASE-0-legal.md, section 4). The other three resolve
+scoped to the Court. The other three resolve
 through the ``aliases`` table; this module only normalises them into stable
 lookup keys.
 
@@ -98,7 +98,7 @@ class RawCitation(BaseModel):
 
     ``start``/``end`` are offsets into the text the citation was found in. They
     exist so that every edge in the graph can be traced back to the characters
-    that justify it: no quote, no row (CLAUDE.md, section 5).
+    that justify it: no quote, no row.
     """
 
     model_config = ConfigDict(frozen=True)

@@ -13,7 +13,7 @@ Registry, y sin release del `.db`.
   `citador_citing_rulings`, `citador_cited_rulings`, `citador_trace_doctrine`),
   tres prompts y el recurso `citador://corpus`.
 - Cliente de la Secretaría de Jurisprudencia de la CSJN, mapeado a mano: no hay
-  especificación publicada. Ver `FASE-0-legal.md` §7.1.
+  especificación publicada.
 - Recuperación por OCR de los fallos cuyo PDF trae una capa de texto con fuente
   sin mapa Unicode. No son escaneos, y el problema es por documento, no por tomo.
 - Clasificación de tratamiento en dos etapas: reglas sobre fórmulas del
@@ -37,5 +37,5 @@ Registry, y sin release del `.db`.
 
 ### Notas
 
-- `CLAUDE.md` usaba `Fallos 331:2691` como identificador de Arriola. Es
+- El diseño inicial usaba `Fallos 331:2691` como identificador de Arriola. Es
   `Fallos: 332:1963`, verificado contra la fuente. Corregido.

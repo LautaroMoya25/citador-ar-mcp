@@ -76,7 +76,7 @@ class TestCheckStatus:
         assert data["evidence"][0]["binding"] is True
 
     def test_every_piece_of_evidence_carries_confidence_and_method(self) -> None:
-        """CLAUDE.md section 4, rule 5: no claim without confidence and source."""
+        """No claim without its confidence and its source."""
         data = json.loads(citator.check_status("Montalvo", "json"))["report"]
         for e in data["evidence"]:
             assert 0.0 <= e["confidence"] <= 1.0

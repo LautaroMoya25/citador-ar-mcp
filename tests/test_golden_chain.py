@@ -1,6 +1,6 @@
 """The acceptance test of the project.
 
-CLAUDE.md, section 6: if this does not pass, nothing else matters. The chain is
+If this does not pass, nothing else matters. The chain is
 the constitutionality of possession for personal use, turned over four times in
 thirty years::
 
@@ -88,7 +88,7 @@ class TestChainEdges:
         assert e["treatment"] == Treatment.MENTIONED.value
 
     def test_every_edge_carries_an_auditable_quote(self, golden: dict[str, Any]) -> None:
-        """No quote, no row. CLAUDE.md section 5."""
+        """No quote, no row."""
         for e in golden["edges"]:
             assert e["quote"].strip(), f"arista sin pasaje: {e['citing']} -> {e['cited']}"
             assert len(e["quote"]) > 40

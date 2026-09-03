@@ -1,16 +1,16 @@
 -- citador_ar_mcp -- the citation graph.
 --
--- Three tables, as specified in CLAUDE.md section 3, plus one FTS5 index.
--- Three deviations from the DDL in that section, each forced by something Fase 0
--- verified against the real source. They are listed here rather than buried:
+-- Three tables plus one FTS5 index. Three deviations from the original design,
+-- each forced by something the source turned out to do. They are listed here
+-- rather than buried:
 --
 --   1. `decided_on` is nullable and `decided_year` is not. The CSJN API returns
 --      only a year for old rulings (Colavini -> "1978", Bazterrica -> "1986");
 --      a full date appears from roughly tomo 313 on. NOT NULL on `decided_on`
 --      would have forced us to invent 1 January dates, and an invented date in a
 --      citator is exactly the kind of false precision the project is against.
---   2. `citations.opinion` is new. CLAUDE.md section 5 requires that a citation
---      written in a dissent be marked, or "el citador miente"; that cannot be
+--   2. `citations.opinion` is new. A citation written in a dissent has to be
+--      marked, or the citator misstates the Court's doctrine; that cannot be
 --      honoured without storing which opinion the passage came from. The API
 --      supplies it (stringVotosMayoria / Voto / Disidencia / DisidenciaParcial).
 --   3. `citations.sumario_id` is new and nullable. The CSJN publishes references
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS citations (
     PRIMARY KEY (citing_id, cited_id, quote),
     CHECK (citing_id <> cited_id),
     CHECK (confidence BETWEEN 0.0 AND 1.0),
-    CHECK (length(trim(quote)) > 0),  -- no quote, no row. CLAUDE.md section 5.
+    CHECK (length(trim(quote)) > 0),  -- no quote, no row
     CHECK (treatment IN ('applied', 'followed', 'distinguished', 'limited',
                          'criticized', 'abandoned', 'mentioned')),
     CHECK (opinion IN ('majority', 'concurrence', 'dissent',

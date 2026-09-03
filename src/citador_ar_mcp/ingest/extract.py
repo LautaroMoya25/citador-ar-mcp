@@ -150,7 +150,7 @@ def extract_pdf(
 
     ``pypdfium2`` is an optional dependency (``pip install citador-ar-mcp[ingest]``)
     because the MCP server itself never touches a PDF: the ingest pipeline runs
-    offline and ships a SQLite file. See CLAUDE.md, section 2.
+    offline and ships a SQLite file.
 
     With ``ocr_fallback``, a document that fails the quality gate is rasterised
     and read back with Tesseract. The OCR output has to clear the *same* gate:
