@@ -229,7 +229,7 @@ Eso son cuatro fallos: alcanza para probar el servidor y correr las evals, no
 para investigar. El corpus completo se baja del release (41 MB):
 
 ```bash
-gh release download v0.1.0 --repo LautaroMoya25/citador-ar-mcp --pattern corpus.db --dir data
+gh release download --repo LautaroMoya25/citador-ar-mcp --pattern corpus.db --dir data
 ```
 
 También está en [la página de releases](https://github.com/LautaroMoya25/citador-ar-mcp/releases).
