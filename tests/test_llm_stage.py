@@ -166,7 +166,10 @@ class TestAvailability:
     def test_a_credential_failure_is_reported_as_unavailable(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import anthropic
+        # The `llm` extra is opt-in, so the suite has to pass without it. This
+        # test hard-imported the package and turned a missing optional
+        # dependency into a red build on every Python where it was not present.
+        anthropic = pytest.importorskip("anthropic", reason="requiere el extra 'llm'")
 
         def explode(*_a: object, **_k: object) -> object:
             raise TypeError("Could not resolve authentication method")

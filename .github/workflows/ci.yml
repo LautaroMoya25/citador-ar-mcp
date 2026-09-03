@@ -39,9 +39,12 @@ jobs:
         with:
           enable-cache: true
 
-      # `llm` too, not just `ingest`: without it mypy cannot see the anthropic
-      # types, every `type: ignore` in ingest/llm.py reads as unused, and the
-      # type check ends up measuring a different program than the one that ships.
+      # The extras have to be named on every `uv run` below, not just here:
+      # `uv run` re-syncs the environment to what its own flags ask for and
+      # removes anything else, so a package installed by this step alone is gone
+      # by the next one. That is what made mypy report the anthropic
+      # `type: ignore` comments as unused and the tests fail to import the
+      # package this step had just installed.
       # `ocr` stays out -- it pulls Ghostscript and the pipeline does not need it.
       - name: Sync dependencies
         run: uv sync --extra ingest --extra llm --all-groups
@@ -49,29 +52,29 @@ jobs:
           UV_PYTHON: ${{ matrix.python-version }}
 
       - name: Lint
-        run: uv run ruff check .
+        run: uv run --extra ingest --extra llm ruff check .
 
       - name: Format
-        run: uv run ruff format --check .
+        run: uv run --extra ingest --extra llm ruff format --check .
 
       # domain/ is under --strict via the override in pyproject.toml. It is the
       # part with no I/O, so there is no excuse for it to be loosely typed.
       - name: Types
-        run: uv run mypy
+        run: uv run --extra ingest --extra llm mypy
 
       # No network. The golden fixture is committed and the graph is built from
       # it, so a CSJN outage cannot turn the build red.
       - name: Build graph from fixture
-        run: uv run python -m citador_ar_mcp.ingest.build_graph --from-fixture
+        run: uv run --extra ingest python -m citador_ar_mcp.ingest.build_graph --from-fixture
 
       - name: Tests
-        run: uv run pytest -q
+        run: uv run --extra ingest --extra llm pytest -q
 
       # Fails the build only on a false red -- a departure asserted where the
       # text does not support one. A missed departure costs coverage; a false one
       # tells a lawyer to discard good authority.
       - name: Treatment classifier against the golden chain
-        run: uv run python scripts/eval_treatment.py
+        run: uv run --extra ingest python scripts/eval_treatment.py
 
       # schema.sql and py.typed are loaded at runtime from inside the package;
       # if either stops being packaged, the failure shows up at a user's install,
