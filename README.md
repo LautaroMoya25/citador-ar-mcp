@@ -225,6 +225,16 @@ Conviene declararlo si el `.db` se baja del release y vive en otro lado.
 | `CITADOR_TESSERACT` | Ruta al binario de Tesseract si no está en el `PATH` |
 | `TESSDATA_PREFIX` | Dónde está `spa.traineddata`, si no está en el directorio estándar |
 | `CITADOR_LLM` | `1` para habilitar la etapa de clasificación por LLM. Apagada por defecto |
+| `ANTHROPIC_API_KEY` | Credencial para la etapa de LLM. El SDK también acepta `ANTHROPIC_AUTH_TOKEN` o un perfil de `ant auth login` |
+| `ANTHROPIC_WORKSPACE_ID` | Obligatoria si la organización usa claves *identity-linked*: la API rechaza el pedido con un **400**, no con un 401, así que es fácil leerlo como un problema de credencial cuando no lo es |
+
+La etapa de LLM consume créditos de la API, que se cargan aparte y **no** vienen
+con una suscripción a Claude. Si falta crédito, `diagnose()` lo dice con todas
+las letras en lugar de fallar en silencio:
+
+```bash
+uv run python -c "from citador_ar_mcp.ingest import llm; print(llm.diagnose() or 'lista')"
+```
 
 Para recuperar fallos viejos hace falta Tesseract con el paquete de español:
 
