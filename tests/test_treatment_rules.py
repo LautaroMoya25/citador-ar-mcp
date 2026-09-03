@@ -284,3 +284,102 @@ class TestFalseFriendsTheMiningExposed:
             "Cuando la letra de una norma es clara no cabe apartarse de su texto (Fallos: 327:5614)"
         )
         assert treatment_of(quote, at=quote.find("327:5614")) is not Treatment.ABANDONED
+
+
+class TestCriticismAimedElsewhere:
+    """Every `criticized` edge in the crawled corpus was wrong. All seven.
+
+    The rule fired on `es objetable` anywhere in the clause and pinned the
+    objection on whatever precedent shared it. In Argentine judgments the thing
+    called objectionable is almost always the appealed ruling's own conclusion,
+    a statute, or an unlawful application of a valid norm -- and the precedent
+    beside it is being cited *in support of saying so*. Six false yellows came
+    out of this, each telling a lawyer to distrust authority the Court was
+    applying at that very moment.
+
+    The passages below are verbatim from the corpus.
+    """
+
+    def test_the_criticised_thing_is_the_appealed_conclusion(self) -> None:
+        quote = (
+            "5°) Que esa conclusión es objetable, pues se tiene reiteradamente dicho "
+            "que, no mediando circunstancias excepcionales, son ajenas a la "
+            "jurisdicción extraordinaria de este Tribunal las cuestiones concernientes "
+            "a la interpretación de las disposiciones arancelarias (Fallos: 239:104)"
+        )
+        assert treatment_of(quote, at=quote.find("239:104")) is not Treatment.CRITICIZED
+
+    def test_the_criticised_thing_is_a_statute(self) -> None:
+        quote = (
+            "es objetable la validez del articulo 41 de la ley 26.522, en la medida en "
+            "que prohibe las transferencias de las licencias. Como ha sostenido la "
+            "Corte, reglamentar un derecho no es prohibir (Fallos: 288:240)"
+        )
+        assert treatment_of(quote, at=quote.find("288:240")) is not Treatment.CRITICIZED
+
+    def test_an_approving_citation_is_not_the_target_of_the_objection(self) -> None:
+        """`conf. doctrina de` introduces support, and the rules now read it.
+
+        Here the objection lands on the unlawful *application* of a valid norm,
+        and the precedent is invoked to back that very proposition.
+        """
+        quote = (
+            "este Tribunal ya ha explicado que no estaría justificada su declaración "
+            "de inconstitucionalidad, en tanto la norma no es inválida, sino que lo "
+            "que resulta objetable es la aplicación ilegal que de ella se efectúa "
+            "(conf. doctrina de Fallos: 317:44)"
+        )
+        assert treatment_of(quote, at=quote.find("317:44")) is not Treatment.CRITICIZED
+
+    def test_a_precedent_actually_called_objectionable_still_fires(self) -> None:
+        """Narrowing the rule must not silence it."""
+        quote = "la doctrina de Fallos: 300:254 es objetable, según se ha señalado"
+        assert treatment_of(quote, at=quote.find("300:254")) is Treatment.CRITICIZED
+
+
+class TestSupportingCitationGuard:
+    """A precedent invoked in support is not being disparaged in the same breath."""
+
+    def test_a_cautionary_formula_does_not_attach_to_a_supporting_citation(self) -> None:
+        """The Court states the doctrine of narrowing, citing the precedent for it.
+
+        Read without the guard this came out as the Court *limiting* Fallos:
+        214:177, which is close to the opposite of what the sentence says.
+        """
+        quote = (
+            "el tribunal debe limitar el alcance de la inconstitucionalidad que tenga "
+            "el deber de declarar, sin sustituir la voluntad del legislador, y asegurar "
+            "así la vigencia de todo el resto de la ley (doctrina de Fallos: 214:177)"
+        )
+        result = classify_passage(quote, citation_position=quote.find("214:177"))
+        assert result.treatment is Treatment.MENTIONED
+        assert result.rule is not None and "cita-de-apoyo" in result.rule
+
+    def test_ocr_may_have_printed_the_bracket_as_a_brace(self) -> None:
+        """Which is exactly how this passage reaches us from the corpus."""
+        quote = (
+            "el tribunal debe limitar el alcance de la inconstitucionalidad y asegurar "
+            "así la vigencia de todo el resto de la ley {doctrina de Fallos: 214:177)"
+        )
+        assert treatment_of(quote, at=quote.find("214:177")) is Treatment.MENTIONED
+
+    def test_it_does_not_reach_beyond_the_citation_s_own_clause(self) -> None:
+        """A ruling can cite a precedent approvingly and then distinguish it.
+
+        Fallos: 345:905 does exactly that: `conf. Fallos: 307:639 y 315:1361`,
+        and then the next considerando sets them aside by name. Suppressing the
+        distinction because of the earlier approving marker would drop a real
+        finding, so the guard only speaks for the clause it is in.
+        """
+        quote = (
+            "la esfera de discrecionalidad no implica que aquella no resulta "
+            "fiscalizable (conf. Fallos: 307:639). 10) Que, a diferencia de lo "
+            "acontecido en los citados precedentes, la administración aquí actuó en "
+            "circunstancias distintas de las examinadas entonces"
+        )
+        assert treatment_of(quote, at=quote.find("307:639")) is Treatment.DISTINGUISHED
+
+    def test_a_positive_treatment_is_left_alone(self) -> None:
+        """The guard exists to stop false negatives, not to erase agreement."""
+        quote = "corresponde aplicar la doctrina de Fallos: 332:1963 al caso"
+        assert treatment_of(quote, at=quote.find("332:1963")) is Treatment.APPLIED

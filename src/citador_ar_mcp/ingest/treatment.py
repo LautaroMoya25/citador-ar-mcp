@@ -266,7 +266,19 @@ RULES: Final[tuple[Rule, ...]] = (
     _rule(
         Treatment.CRITICIZED,
         "objetable",
-        r"(?:resulta|es)\s+(?:objetable|criticable)|ha\s+sido\s+objeto\s+de\s+cr[íi]ticas",
+        # The objection has to attach to the precedent, not merely share a
+        # clause with it. Unqualified, this fired on all seven `criticized`
+        # edges in the corpus and every one was wrong: the Court was calling
+        # the appealed ruling's conclusion objectionable ("esa conclusión es
+        # objetable"), or a statute ("es objetable la validez del artículo
+        # 41"), or an unlawful application of a valid norm -- and citing the
+        # precedent *in support* of saying so. Six false yellows came out of it,
+        # each telling a lawyer to distrust authority the Court was applying.
+        r"(?:doctrina|criterio|precedente|jurisprudencia|standard|est[áa]ndar)"
+        r"(?:\s+\S+){0,5}?\s+(?:es|son|resulta|resultan)\s+"
+        r"(?:objetable|objetables|criticable|criticables)"
+        r"|(?:doctrina|criterio|precedente|jurisprudencia)(?:\s+\S+){0,5}?\s+"
+        r"ha\s+sido\s+objeto\s+de\s+cr[íi]ticas",
         0.72,
     ),
 )
@@ -307,6 +319,31 @@ _RECITAL: Final = re.compile(
     r"(?:en\s+\d{4}\s*,?\s+)?"
     r"en\s+(?:el\s+)?(?:caso\s+|precedente\s+|autos\s+|re\s+|la\s+causa\s+)?"
     r"[\"“'«]",
+    re.IGNORECASE,
+)
+
+#: How far back to look for the marker that introduces a citation.
+APPROVING_WINDOW: Final = 48
+
+#: A citation introduced this way is being invoked *in support*: "(conf. doctrina
+#: de Fallos: 317:44)". Whatever criticism or distinction the clause contains
+#: belongs to something else in it, because a court does not cite a precedent
+#: approvingly and disparage it in the same breath.
+#:
+#: Checked against the text immediately before the citation, never against the
+#: whole passage: seven of the twenty-nine sound `distinguished` edges carry an
+#: approving marker somewhere in their quote, attached to a *different* cite.
+_APPROVING_INTRO: Final = re.compile(
+    r"(?:\bconf\.|\bcfr\.|\bconforme\b|\barg\.|\bv[ée]ase\b|"
+    r"\bcon\s+cita\s+de\b|\ben\s+igual\s+sentido\b"
+    # `doctrina de` only as a parenthetical citation. On its own it is not a
+    # marker of approval at all: "apartarse de la doctrina de Fallos: 308:1392"
+    # is the golden chain's departure formula, and treating those three words as
+    # support would have silenced the one red light the corpus produces.
+    # The bracket class is OCR tolerance, not decoration: the one corpus
+    # passage this catches prints as `{doctrina de Fallos: 214:177)`.
+    r"|[(\[{]\s*doctrina\s+de\b)"
+    r"[^.;]{0,20}$",
     re.IGNORECASE,
 )
 
@@ -444,6 +481,31 @@ def classify_passage(
             UNCLASSIFIED_CONFIDENCE,
             Method.RULE,
             rule=f"{rule.name}(relato-historico)",
+            scope=scope,
+        )
+
+    if (
+        citation_position is not None
+        # Only when the formula was found in the citation's own clause. The
+        # guard's claim is about *this* clause: the treatment language cannot be
+        # aimed at a citation the same clause introduces as support. Two clauses
+        # away that reasoning does not hold, and applying it there costs real
+        # findings -- Fallos: 345:905 cites two precedents approvingly and then
+        # distinguishes them by name in the considerando that follows.
+        and scope == "clause"
+        and rule.treatment.polarity in (Polarity.NEGATIVE, Polarity.CAUTIONARY)
+        and _APPROVING_INTRO.search(
+            normalized[max(0, citation_position - APPROVING_WINDOW) : citation_position]
+        )
+    ):
+        # The citation is introduced as support. A negative or cautionary label
+        # here would be reading the clause's criticism as aimed at the very
+        # precedent the Court is leaning on.
+        return Classification(
+            FALLBACK,
+            UNCLASSIFIED_CONFIDENCE,
+            Method.RULE,
+            rule=f"{rule.name}(cita-de-apoyo)",
             scope=scope,
         )
 

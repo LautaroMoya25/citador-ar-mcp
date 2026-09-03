@@ -2,6 +2,30 @@
 
 Formato de [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [0.1.2] - 2026-09-03
+
+### Corregido
+
+- **Los siete tratamientos `criticized` del corpus eran falsos, sin excepción.**
+  La regla enganchaba "es objetable" en la cláusula y le atribuía la crítica al
+  precedente citado, cuando lo objetado era la conclusión del tribunal *a quo*,
+  una ley, o la aplicación ilegal de una norma válida — y el precedente estaba
+  invocado **a favor**, a veces con un "conf. doctrina de" delante. Producían
+  seis señales amarillas falsas, cada una diciéndole a un abogado que
+  desconfiara de autoridad que la Corte estaba aplicando. Dos de esas aristas se
+  reclasificaron como `applied`, que es lo que el pasaje sostiene.
+- Nueva guarda de **cita de apoyo**: una cita introducida por `conf.`, `cfr.`,
+  `arg.` o `(doctrina de` está invocada en respaldo, así que ninguna etiqueta
+  negativa o cautelar se le adhiere. Se limita a la cláusula de la cita: un
+  fallo puede citar un precedente a favor y distinguirlo en el considerando
+  siguiente, y eso sigue registrándose.
+
+### Agregado
+
+- `reclassify_stored(include_classified=True)` permite **retirar** un veredicto
+  cuando la regla que lo produjo resultó equivocada. Por defecto sigue sin pisar
+  clasificaciones existentes, y nunca toca las anotadas a mano.
+
 ## [0.1.1] - 2026-09-03
 
 ### Cambiado

@@ -579,33 +579,51 @@ async def _ingest_one(
     return found, classified
 
 
-def reclassify_stored(conn: sqlite3.Connection) -> tuple[int, int]:
+def reclassify_stored(
+    conn: sqlite3.Connection, *, include_classified: bool = False
+) -> tuple[int, int]:
     """Re-run the rules over passages already in the graph. Returns ``(seen, changed)``.
 
     The rule set grows as the corpus is read, and every improvement would
     otherwise mean re-downloading thousands of PDFs to see it. The passages are
     already stored; only the reading of them was out of date.
 
-    Touches only rows still at fallback confidence. A row a rule or a person has
-    already spoken for is left alone -- re-running must never quietly overwrite
-    a judgement with a weaker one.
+    By default this touches only rows still at fallback confidence: a row a rule
+    or a person has already spoken for is left alone, so re-running can never
+    quietly overwrite a judgement with a weaker one.
+
+    ``include_classified`` lifts that, and exists because the guard cuts both
+    ways. When a rule is found to be wrong, its verdicts have to be withdrawable
+    -- the seven `criticized` edges in the crawled corpus were every one of them
+    false, and leaving them in place because they carried high confidence would
+    have kept six false yellow signals alive. Rows classified by hand are never
+    touched either way: `manual` outranks any rule.
     """
     from citador_ar_mcp.ingest.treatment import classify_passage
 
+    where = "quote NOT LIKE 'Referencia publicada por la CSJN%' AND method != 'manual'"
+    params: list[object] = []
+    if not include_classified:
+        where += " AND confidence <= ?"
+        params.append(UNCLASSIFIED_CONFIDENCE + 0.05)
+
     rows = conn.execute(
-        """SELECT citing_id, cited_id, quote FROM citations
-           WHERE confidence <= ? AND quote NOT LIKE 'Referencia publicada por la CSJN%'""",
-        (UNCLASSIFIED_CONFIDENCE + 0.05,),
+        f"SELECT citing_id, cited_id, quote, treatment, confidence FROM citations WHERE {where}",
+        params,
     ).fetchall()
 
     changed = 0
-    for citing, cited, quote in rows:
+    for citing, cited, quote, before, before_confidence in rows:
         position = next(
             (c.start for c in find_fallos_citations(quote) if str(c.ruling_id) == cited),
             None,
         )
         result = classify_passage(quote, citation_position=position, cited=cited)
-        if result.is_fallback:
+        if result.is_fallback and not include_classified:
+            continue
+        if result.treatment.value == before and abs(result.confidence - before_confidence) < 1e-9:
+            # Same reading as last time. Counting this as a change would report
+            # 1.616 for a run that moved seven labels.
             continue
         conn.execute(
             "UPDATE citations SET treatment = ?, confidence = ?, method = ? "

@@ -16,6 +16,7 @@ from citador_ar_mcp.ingest.build_graph import (
     create_schema,
     done_volumes,
     mark_done,
+    reclassify_stored,
     stamp_provenance,
     store_sumario,
 )
@@ -439,3 +440,59 @@ class TestProvenance:
         store_sumario(conn, TestCrawlRobustness()._sumario((me, outside)))
         stamp_provenance(conn)
         assert "No es el corpus completo" in self._meta(conn)["note"]
+
+
+class TestWithdrawingAWrongVerdict:
+    """A rule found to be wrong has to be able to take its findings back.
+
+    Re-running the rules deliberately leaves classified rows alone, so an
+    improvement can never overwrite a judgement with a weaker one. That guard
+    cuts both ways: when the seven `criticized` edges in the corpus turned out
+    to be false -- the Court calling the appealed conclusion objectionable while
+    citing the precedent in support -- their confidence was what kept them, and
+    six false yellow signals with them.
+    """
+
+    def _graph(self, tmp_path: Path, treatment: str, method: str) -> sqlite3.Connection:
+        conn = sqlite3.connect(tmp_path / "g.db")
+        conn.execute("PRAGMA foreign_keys = ON")
+        create_schema(conn)
+        for rid, vol, page in (("fallos:340:1795", 340, 1795), ("fallos:317:44", 317, 44)):
+            conn.execute(
+                "INSERT INTO rulings (id, volume, page, caption, decided_year, source_url, "
+                "text_status) VALUES (?, ?, ?, 'x', 2017, 'https://e', 'extracted')",
+                (rid, vol, page),
+            )
+        conn.execute(
+            "INSERT INTO citations (citing_id, cited_id, treatment, opinion, confidence, "
+            "quote, method) VALUES ('fallos:340:1795', 'fallos:317:44', ?, 'majority', 0.72, "
+            "?, ?)",
+            (
+                treatment,
+                "lo que resulta objetable es la aplicación ilegal que de ella se efectúa "
+                "(conf. doctrina de Fallos: 317:44)",
+                method,
+            ),
+        )
+        conn.commit()
+        return conn
+
+    def _treatment(self, conn: sqlite3.Connection) -> str:
+        return str(conn.execute("SELECT treatment FROM citations").fetchone()[0])
+
+    def test_a_rule_verdict_is_left_alone_by_default(self, tmp_path: Path) -> None:
+        conn = self._graph(tmp_path, "criticized", "rule")
+        reclassify_stored(conn)
+        assert self._treatment(conn) == "criticized"
+
+    def test_it_is_withdrawn_when_asked(self, tmp_path: Path) -> None:
+        conn = self._graph(tmp_path, "criticized", "rule")
+        reclassify_stored(conn, include_classified=True)
+        # Not merely dropped: the passage says the Court applied it.
+        assert self._treatment(conn) == "applied"
+
+    def test_a_hand_annotated_row_is_never_touched(self, tmp_path: Path) -> None:
+        """`manual` outranks any rule, however sure the rule is."""
+        conn = self._graph(tmp_path, "criticized", "manual")
+        reclassify_stored(conn, include_classified=True)
+        assert self._treatment(conn) == "criticized"
