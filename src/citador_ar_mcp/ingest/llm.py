@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
 from typing import Final
 
 from pydantic import BaseModel, Field
@@ -105,20 +106,110 @@ class _Verdict(BaseModel):
     reasoning: str = Field(description="Una o dos oraciones, en español")
 
 
-def available() -> bool:
-    """Whether the LLM stage can run: SDK installed and a credential resolvable.
+#: Claude Opus 5 list prices, US dollars per million tokens. Cache reads are a
+#: tenth of the input rate; writes are a quarter more than it.
+PRICE_INPUT: Final = 5.00
+PRICE_OUTPUT: Final = 25.00
+PRICE_CACHE_READ: Final = 0.50
+PRICE_CACHE_WRITE: Final = 6.25
 
-    An unset ``ANTHROPIC_API_KEY`` does not mean there are no credentials -- the
-    SDK also resolves ``ANTHROPIC_AUTH_TOKEN`` and an ``ant auth login`` profile
-    -- so this constructs a client rather than checking one variable.
+
+@dataclass
+class Budget:
+    """A hard ceiling on what a classification run may spend.
+
+    Accounted from the ``usage`` the API returns, not from an estimate of it.
+    An estimate is what you check afterwards; this is what stops the run.
+    """
+
+    limit_usd: float
+    spent_usd: float = 0.0
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+
+    def record(self, usage: object) -> float:
+        """Add one response's usage. Returns what that call cost.
+
+        Reads the fields defensively: a field the SDK stops reporting must cost
+        the run accuracy, not raise in the middle of a paid batch.
+        """
+
+        def field(name: str) -> int:
+            return int(getattr(usage, name, 0) or 0)
+
+        inp = field("input_tokens")
+        out = field("output_tokens")
+        cr = field("cache_read_input_tokens")
+        cw = field("cache_creation_input_tokens")
+        cost = (
+            inp * PRICE_INPUT + out * PRICE_OUTPUT + cr * PRICE_CACHE_READ + cw * PRICE_CACHE_WRITE
+        ) / 1_000_000
+        self.spent_usd += cost
+        self.calls += 1
+        self.input_tokens += inp
+        self.output_tokens += out
+        self.cache_read_tokens += cr
+        self.cache_write_tokens += cw
+        return cost
+
+    @property
+    def exhausted(self) -> bool:
+        return self.spent_usd >= self.limit_usd
+
+    @property
+    def per_call(self) -> float:
+        return self.spent_usd / self.calls if self.calls else 0.0
+
+    def affords(self, calls: int = 1) -> bool:
+        """Whether the measured per-call cost leaves room for ``calls`` more.
+
+        Uses the observed average rather than a guess, and refuses once the
+        projection would cross the limit -- so the ceiling holds even if the
+        first calls happened to be cheap.
+        """
+        if self.exhausted:
+            return False
+        if not self.calls:
+            return True
+        return self.spent_usd + self.per_call * calls <= self.limit_usd
+
+    def summary(self) -> str:
+        return (
+            f"{self.calls} llamadas, ${self.spent_usd:.2f} de ${self.limit_usd:.2f} "
+            f"(${self.per_call:.4f} por llamada; "
+            f"{self.input_tokens:,} in, {self.output_tokens:,} out, "
+            f"{self.cache_read_tokens:,} de caché)"
+        )
+
+
+def available() -> bool:
+    """Whether the LLM stage can actually run.
+
+    Probes with ``count_tokens``, which authenticates but bills nothing.
+
+    Constructing the client is not a check: the SDK resolves credentials lazily,
+    so ``Anthropic()`` succeeds with no credential at all and fails only on the
+    first real request. An earlier version of this function returned ``True`` in
+    exactly that state, which would have reported "etapa LLM activa" and then
+    silently classified nothing.
+
+    An unset ``ANTHROPIC_API_KEY`` does not on its own mean there are no
+    credentials -- the SDK also resolves ``ANTHROPIC_AUTH_TOKEN`` and an
+    ``ant auth login`` profile -- which is why this asks the API rather than
+    reading an environment variable.
     """
     try:
         import anthropic
     except ImportError:
         return False
     try:
-        anthropic.Anthropic()
-    except Exception:
+        client = anthropic.Anthropic(max_retries=0, timeout=15.0)
+        client.messages.count_tokens(model=MODEL, messages=[{"role": "user", "content": "ping"}])
+    except Exception as exc:
+        log.info("etapa LLM no disponible: %s", type(exc).__name__)
         return False
     return True
 
@@ -141,6 +232,7 @@ class ClaudeTreatmentClassifier:
         model: str = MODEL,
         effort: str = EFFORT,
         max_confidence: float = MAX_CONFIDENCE,
+        budget: Budget | None = None,
     ) -> None:
         import anthropic
 
@@ -149,6 +241,7 @@ class ClaudeTreatmentClassifier:
         self._model = model
         self._effort = effort
         self._max_confidence = max_confidence
+        self.budget = budget
 
     def classify(self, quote: str, *, cited: str | None = None) -> Classification | None:
         """Classify ``quote``. Returns ``None`` on any failure, never raises.
@@ -156,6 +249,10 @@ class ClaudeTreatmentClassifier:
         ``None`` means "the rules' fallback stands", which is the conservative
         outcome. An outage in this stage degrades coverage, never correctness.
         """
+        if self.budget is not None and not self.budget.affords():
+            log.warning("presupuesto agotado (%s); no se llama más", self.budget.summary())
+            return None
+
         target = cited or "el precedente citado en el pasaje"
         try:
             response = self._client.messages.parse(
@@ -190,6 +287,9 @@ class ClaudeTreatmentClassifier:
         except Exception:
             log.exception("clasificación LLM falló de forma inesperada")
             return None
+
+        if self.budget is not None:
+            self.budget.record(getattr(response, "usage", None))
 
         verdict = response.parsed_output
         if verdict is None:

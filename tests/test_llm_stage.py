@@ -152,3 +152,33 @@ class TestOptIn:
 class TestModelChoice:
     def test_uses_the_current_opus_model_id(self) -> None:
         assert llm.MODEL == "claude-opus-5"
+
+
+class TestAvailability:
+    """Constructing the client is not a credential check.
+
+    The SDK resolves credentials lazily, so `Anthropic()` succeeds with none at
+    all and fails only on the first real request. An earlier version of
+    `available()` returned True in exactly that state, which would have reported
+    the stage as active and then classified nothing.
+    """
+
+    def test_a_credential_failure_is_reported_as_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import anthropic
+
+        def explode(*_a: object, **_k: object) -> object:
+            raise TypeError("Could not resolve authentication method")
+
+        monkeypatch.setattr(anthropic.Anthropic, "__init__", explode)
+        assert not llm.available()
+
+    def test_the_probe_does_not_use_the_messages_endpoint(self) -> None:
+        """It has to authenticate without billing anything."""
+        import inspect
+
+        source = inspect.getsource(llm.available)
+        assert "count_tokens" in source
+        assert "messages.create" not in source
+        assert "messages.parse" not in source
