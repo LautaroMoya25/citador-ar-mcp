@@ -188,18 +188,25 @@ class Budget:
         )
 
 
-def _client_kwargs() -> dict[str, object]:
-    """Extra client settings the account may require.
+def _workspace_headers() -> dict[str, str] | None:
+    """Extra headers the account may require. ``None`` when it does not.
 
     An identity-linked API key is scoped to a workspace and the API rejects a
     request that does not name one, with a 400 rather than a 401 -- it is not an
     authentication failure, so it is easy to misread as one. Set
     ``ANTHROPIC_WORKSPACE_ID`` and it travels as a header.
+
+    Returns the headers themselves rather than a bag of keyword arguments. The
+    bag was typed ``dict[str, object]`` and splatted into the constructor, which
+    mypy rejects as ``arg-type``; the two ``type: ignore`` comments that silenced
+    it were then flagged as *unused* under the Python versions where the SDK's
+    own types were not visible, so CI went red either way. Passing one correctly
+    typed argument removes the question instead of answering it per version.
     """
     workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID", "").strip()
     if not workspace:
-        return {}
-    return {"default_headers": {"anthropic-workspace-id": workspace}}
+        return None
+    return {"anthropic-workspace-id": workspace}
 
 
 def diagnose() -> str | None:
@@ -215,7 +222,9 @@ def diagnose() -> str | None:
     except ImportError:
         return "falta el paquete 'anthropic': uv sync --extra llm"
     try:
-        client = anthropic.Anthropic(max_retries=0, timeout=15.0, **_client_kwargs())  # type: ignore[arg-type]
+        client = anthropic.Anthropic(
+            max_retries=0, timeout=15.0, default_headers=_workspace_headers()
+        )
         client.messages.count_tokens(model=MODEL, messages=[{"role": "user", "content": "ping"}])
     except Exception as exc:
         message = getattr(exc, "message", None) or str(exc)
@@ -279,7 +288,7 @@ class ClaudeTreatmentClassifier:
         import anthropic
 
         self._anthropic = anthropic
-        self._client = anthropic.Anthropic(**_client_kwargs())  # type: ignore[arg-type]
+        self._client = anthropic.Anthropic(default_headers=_workspace_headers())
         self._model = model
         self._effort = effort
         self._max_confidence = max_confidence

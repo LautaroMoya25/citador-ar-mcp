@@ -194,17 +194,17 @@ class TestDiagnosis:
 
     def test_a_missing_workspace_sends_no_header(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ANTHROPIC_WORKSPACE_ID", raising=False)
-        assert llm._client_kwargs() == {}
+        assert llm._workspace_headers() is None
 
     def test_a_configured_workspace_travels_as_a_header(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", "wrkspc_abc")
-        assert llm._client_kwargs() == {"default_headers": {"anthropic-workspace-id": "wrkspc_abc"}}
+        assert llm._workspace_headers() == {"anthropic-workspace-id": "wrkspc_abc"}
 
     def test_whitespace_only_is_not_a_workspace(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", "   ")
-        assert llm._client_kwargs() == {}
+        assert llm._workspace_headers() is None
 
     def test_a_missing_sdk_is_reported_as_such(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import builtins
