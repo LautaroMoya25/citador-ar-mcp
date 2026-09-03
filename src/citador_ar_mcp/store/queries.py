@@ -178,6 +178,33 @@ def resolve(conn: sqlite3.Connection, raw: str) -> Ruling | None:
     return None
 
 
+def _typo_pages(page: int) -> list[int]:
+    """Page numbers one plausible slip away from ``page``.
+
+    Adjacent-digit transpositions, then single-digit substitutions. These are
+    the mistakes people actually make copying a cite out of a brief, and they
+    are not near the original numerically -- swapping two digits can move the
+    number by hundreds.
+    """
+    digits = str(page)
+    out: list[int] = []
+    for i in range(len(digits) - 1):
+        swapped = list(digits)
+        swapped[i], swapped[i + 1] = swapped[i + 1], swapped[i]
+        candidate = int("".join(swapped))
+        if candidate != page:
+            out.append(candidate)
+    for i, original in enumerate(digits):
+        for replacement in "0123456789":
+            if replacement == original:
+                continue
+            changed = digits[:i] + replacement + digits[i + 1 :]
+            candidate = int(changed)
+            if candidate != page and candidate > 0:
+                out.append(candidate)
+    return list(dict.fromkeys(out))
+
+
 def suggest(conn: sqlite3.Connection, raw: str, limit: int = 5) -> list[Ruling]:
     """Near matches for something that did not resolve.
 
@@ -187,14 +214,29 @@ def suggest(conn: sqlite3.Connection, raw: str, limit: int = 5) -> list[Ruling]:
     text = raw.strip()
     out: dict[str, Ruling] = {}
 
-    # A mistyped page number: same tomo, nearby page.
     rid = RulingId.parse(text)
     if rid is not None:
+        # Typo candidates before numeric neighbours. `Fallos 308:1932` for
+        # `308:1392` is a transposition, not a near miss, and ordering by
+        # |page difference| buries the right answer 540 pages down -- which is
+        # what happened once the corpus held sixty-eight rulings from tomo 308
+        # instead of one.
+        for page in _typo_pages(rid.page):
+            candidate = RulingId.build(rid.volume, page)
+            if candidate is None:
+                continue
+            row = conn.execute(
+                f"SELECT {_RULING_COLS} FROM rulings WHERE id = ?", (str(candidate),)
+            ).fetchone()
+            if row:
+                out[row["id"]] = _row_to_ruling(row)
+
+        # Then the plain near miss: a digit misread rather than swapped.
         for row in conn.execute(
             f"SELECT {_RULING_COLS} FROM rulings WHERE volume = ? ORDER BY abs(page - ?) LIMIT ?",
             (rid.volume, rid.page, limit),
         ):
-            out[row["id"]] = _row_to_ruling(row)
+            out.setdefault(row["id"], _row_to_ruling(row))
 
     # A name or caption fragment. Matched on a truncated prefix and OR-joined,
     # because the input that reaches here is usually a typo -- "Bazterica" has to

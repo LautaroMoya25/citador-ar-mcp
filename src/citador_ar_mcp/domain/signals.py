@@ -253,6 +253,18 @@ def _build_caveats(
         )
         return caveats
 
+    if signal is Signal.GRAY:
+        # A grey light with citations behind it used to carry no caveat at all:
+        # the warning only fired when *nothing* cited the ruling. That left the
+        # common case -- cited, but by passages nobody could classify -- reading
+        # as a bare "sin tratamiento registrado", which is the reading most
+        # likely to be mistaken for a clean bill of health.
+        caveats.append(
+            f"Lo citan {len({r.citing for r in records})} fallo(s), pero ninguna cita "
+            "pudo clasificarse como tratamiento. Gris significa que no se sabe, "
+            "no que el precedente esté confirmado."
+        )
+
     restored = _restoring(
         [
             r

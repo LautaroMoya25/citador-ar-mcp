@@ -2,14 +2,22 @@
 <!--
   Evals de citador_ar_mcp.
 
-  Se corren contra el grafo que construye `--from-fixture`, que es el mismo que
-  arma CI:
+  Verificables con:
 
-      uv run python -m citador_ar_mcp.ingest.build_graph --from-fixture
+      uv run python scripts/run_evals.py --db data/corpus.db
 
-  Ese corpus tiene los cuatro fallos de la cadena de la tenencia para consumo
-  personal y las cinco aristas entre ellos. Es chico a propósito: las evals
-  tienen que ser estables, y un corpus crawleado cambia cuando la Corte publica.
+  Anclan a la cadena de la tenencia para consumo personal, que `--from-fixture`
+  carga con sus cinco aristas anotadas a mano. Esa cadena tiene que estar en el
+  grafo: un corpus crawleado sin ella responde mal las diez, no porque el sistema
+  falle sino porque le falta el material. Cargarla sobre un corpus grande es una
+  sola corrida y no pisa nada:
+
+      uv run python -m citador_ar_mcp.ingest.build_graph --db data/corpus.db --from-fixture
+
+  Correrlas contra el corpus completo encontró dos defectos que el grafo de
+  cuatro fallos no podía mostrar: un gris sin advertencia alguna, y una sugerencia
+  de cita que ordenaba por distancia numérica y por eso enterraba la transposición
+  de dígitos bajo sesenta y ocho vecinos más cercanos.
 
   Estabilidad: los fallos de la Corte no cambian retroactivamente, así que la
   única forma de que una eval se vuelva inestable es anclarla a doctrina en
@@ -49,7 +57,7 @@
 
   <qa_pair>
     <question>¿Se puede afirmar, a partir de este corpus, que Colavini (Fallos: 300:254) sigue siendo derecho vigente?</question>
-    <answer>No. La señal es gris: sin tratamiento registrado. Es citado por Bazterrica y por Arriola, pero en ambos casos como "mentioned", sin tomar postura. La ausencia de tratamiento negativo no equivale a vigencia confirmada, y la respuesta tiene que decirlo: gris significa que el corpus no registra tratamiento, lo que puede ser falta de cobertura.</answer>
+    <answer>No. La señal es gris: sin tratamiento registrado. Es citado por Bazterrica y por Arriola, pero en ambos casos como "mentioned", sin tomar postura. La ausencia de tratamiento negativo no equivale a vigencia confirmada, y la respuesta tiene que decirlo: gris significa que no se sabe, no que el precedente esté confirmado. Si el corpus registra citas pero ninguna pudo clasificarse, la respuesta tiene que distinguir eso de no tener citas en absoluto.</answer>
   </qa_pair>
 
   <qa_pair>
