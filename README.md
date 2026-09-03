@@ -1,5 +1,8 @@
 # citador_ar_mcp
 
+[![PyPI](https://img.shields.io/pypi/v/citador-ar-mcp)](https://pypi.org/project/citador-ar-mcp/)
+[![CI](https://github.com/LautaroMoya25/citador-ar-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/LautaroMoya25/citador-ar-mcp/actions/workflows/ci.yml)
+
 Un servidor MCP que responde la pregunta que ningún buscador jurídico argentino
 abierto responde: **¿este fallo de la Corte sigue siendo buen derecho?**
 
@@ -210,8 +213,10 @@ los votos propios y las disidencias se segmentan aparte y no mueven la señal.
 ## Instalación
 
 ```bash
-uv sync --extra ingest
+uv tool install citador-ar-mcp
 ```
+
+O `pip install citador-ar-mcp`. Para trabajar sobre el repo, `uv sync --extra ingest`.
 
 El servidor necesita el grafo antes de responder nada. Generalo con la cadena
 dorada, que no requiere red:
@@ -242,7 +247,7 @@ trae las instrucciones para generarlo, en lugar de que el servidor no arranque.
 En Claude Code:
 
 ```bash
-claude mcp add citador -- uv --directory /ruta/a/citador-ar-mcp run citador-ar-mcp
+claude mcp add citador --env CITADOR_DB=/ruta/al/corpus.db -- uvx citador-ar-mcp
 ```
 
 En Claude Desktop, en `claude_desktop_config.json`:
@@ -251,16 +256,20 @@ En Claude Desktop, en `claude_desktop_config.json`:
 {
   "mcpServers": {
     "citador": {
-      "command": "uv",
-      "args": ["--directory", "/ruta/a/citador-ar-mcp", "run", "citador-ar-mcp"],
-      "env": { "CITADOR_DB": "/ruta/a/citador-ar-mcp/data/citador.db" }
+      "command": "uvx",
+      "args": ["citador-ar-mcp"],
+      "env": { "CITADOR_DB": "/ruta/al/corpus.db" }
     }
   }
 }
 ```
 
-`CITADOR_DB` es opcional: por defecto usa `data/citador.db` dentro del proyecto.
-Conviene declararlo si el `.db` se baja del release y vive en otro lado.
+Si en cambio lo corrés desde el repo, reemplazá el comando por
+`uv --directory /ruta/a/citador-ar-mcp run citador-ar-mcp`.
+
+`CITADOR_DB` es opcional sólo si trabajás dentro del repo, donde por defecto usa
+`data/citador.db`. Instalado desde PyPI no hay tal directorio, así que declaralo
+apuntando al `.db` que bajaste del release.
 
 ### Variables de entorno
 
