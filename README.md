@@ -164,7 +164,7 @@ con su letra chica:
 |---|---|
 | Nodos | 7.953 — de los cuales **5.325** son fallos crawleados y **2.628** son *stubs* |
 | Aristas de cita | 73.611 |
-| Con postura distinta de `mentioned` | **1.513 (2,1 %)** |
+| Con postura distinta de `mentioned` | **1.507 (2,0 %)** |
 | Atribuidas a un voto | 10.444 (14,2 %), de las cuales 7.157 a la mayoría |
 | Con texto propio | 391 (387 extraídos del PDF, 4 por OCR) |
 
@@ -177,7 +177,7 @@ Tres cosas que conviene entender antes de confiar en una respuesta:
 - **Las aristas las publica la propia Corte**, en el campo `linksCitantes` de
   cada sumario. El grafo es ancho porque no depende de encontrar la cita en el
   texto; la clasificación es fina porque sí.
-- **El 97,9 % de las aristas quedó en `mentioned`.** Eso no significa "citado sin
+- **El 98,0 % de las aristas quedó en `mentioned`.** Eso no significa "citado sin
   tomar postura": significa *no clasificado*. La distinción es la diferencia
   entre una señal gris que informa y una que tranquiliza sin motivo, y las tools
   la dicen en cada respuesta con esa palabra.
