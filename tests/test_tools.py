@@ -96,8 +96,13 @@ class TestCheckStatus:
 
     def test_response_carries_corpus_provenance(self) -> None:
         data = json.loads(citator.check_status("Montalvo", "json"))
-        assert data["corpus"]["source"] == "fixture"
-        assert data["corpus"]["built_on"]
+        corpus = data["corpus"]
+        assert "fixture" in corpus["source"]
+        assert corpus["built_on"]
+        # The provenance is measured from the graph, not hand-written, and a
+        # fixture-only graph has to say so: otherwise a grey signal over four
+        # rulings reads exactly like a grey signal over five thousand.
+        assert "No es el corpus completo" in corpus["note"]
 
 
 class TestPagination:

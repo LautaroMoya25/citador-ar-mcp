@@ -130,6 +130,97 @@ def set_meta(conn: sqlite3.Connection, **values: str) -> None:
         )
 
 
+def add_source(conn: sqlite3.Connection, tag: str) -> None:
+    """Record where the graph's contents came from, without erasing earlier steps.
+
+    Each ingest step used to stamp its own ``source``, so whichever ran last
+    described the whole file: a corpus crawled from twenty tomos and then topped
+    up with the golden fixture ended up labelled ``fixture``, which is the one
+    reading that makes a real corpus look like a toy.
+    """
+    row = conn.execute("SELECT value FROM corpus_meta WHERE key = 'source'").fetchone()
+    tags = [t for t in (row[0].split(" + ") if row and row[0] else []) if t]
+    if tag not in tags:
+        tags.append(tag)
+    set_meta(conn, source=" + ".join(tags))
+
+
+def _es(n: int) -> str:
+    """Thousands separator in Spanish: 5325 -> 5.325."""
+    return f"{n:,}".replace(",", ".")
+
+
+def _crawled_range(conn: sqlite3.Connection) -> tuple[int, int] | None:
+    row = conn.execute("SELECT value FROM corpus_meta WHERE key = 'crawled_tomos'").fetchone()
+    if not row or not row[0]:
+        return None
+    vols = [int(v) for v in row[0].split(",") if v.strip().isdigit()]
+    return (min(vols), max(vols)) if vols else None
+
+
+def stamp_provenance(conn: sqlite3.Connection) -> None:
+    """Recompute the graph's composition into ``corpus_meta``.
+
+    Measured, never hand-written. Every number here is a claim the tools and the
+    ``citador://corpus`` resource repeat back to the reader, and a stale one is a
+    falsehood carrying a citation. Two of these numbers exist to keep the corpus
+    honest about its own thinness: only a fraction of the edges carry a stance,
+    and only a fraction could be attributed to a vote -- and it is the attributed
+    majority ones alone that can light the signal.
+    """
+    one = lambda sql: int(conn.execute(sql).fetchone()[0])  # noqa: E731
+
+    edges = one("SELECT count(*) FROM citations")
+    if not edges:
+        return
+
+    stance = one("SELECT count(*) FROM citations WHERE treatment != 'mentioned'")
+    attributed = one("SELECT count(*) FROM citations WHERE opinion != 'unknown'")
+    majority = one("SELECT count(*) FROM citations WHERE opinion = 'majority'")
+    extracted = one("SELECT count(*) FROM rulings WHERE text_status = 'extracted'")
+    ocr = one("SELECT count(*) FROM rulings WHERE text_status = 'ocr'")
+
+    values = {
+        "built_on": date.today().isoformat(),
+        "fuente_oficial": "CSJN, Secretaría de Jurisprudencia — sjconsulta.csjn.gov.ar",
+        "licencia": (
+            "Corpus derivado. MIT para el software; los fallos son públicos y se "
+            "atribuyen a la CSJN."
+        ),
+        "cobertura_clasificacion": (
+            f"{stance} de {edges} aristas ({100 * stance / edges:.1f}%) tienen una postura "
+            "distinta de 'mentioned'. El resto es cita sin clasificar, no cita neutral "
+            "verificada."
+        ),
+        "cobertura_atribucion": (
+            f"{attributed} de {edges} aristas ({100 * attributed / edges:.1f}%) pudieron "
+            f"atribuirse a un voto; {majority} a la mayoría. Solo esas últimas pueden "
+            "encender la señal."
+        ),
+        "texto_completo": (
+            f"{extracted} fallos con texto extraído del PDF y {ocr} por OCR. El resto no "
+            "tiene texto propio: el grafo se construye desde los sumarios y sus links."
+        ),
+    }
+
+    span = _crawled_range(conn)
+    if span is not None:
+        low, high = span
+        inside = one(f"SELECT count(*) FROM rulings WHERE volume BETWEEN {low} AND {high}")
+        stub = one(f"SELECT count(*) FROM rulings WHERE volume < {low} OR volume > {high}")
+        values["note"] = (
+            f"{_es(inside)} fallos crawleados de los tomos {low}-{high}, más {_es(stub)} "
+            "nodos stub creados para precedentes citados fuera de ese rango (sin texto ni "
+            "carátula completa). Las aristas provienen del campo linksCitantes que publica "
+            "la propia CSJN por sumario."
+        )
+    else:
+        values["note"] = (
+            "Grafo sin crawl registrado: solo los fallos cargados a mano. No es el corpus completo."
+        )
+    set_meta(conn, **values)
+
+
 def load_fixture(conn: sqlite3.Connection, path: Path = FIXTURE) -> tuple[int, int]:
     """Load the annotated golden chain into an empty or existing graph."""
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -158,13 +249,8 @@ def load_fixture(conn: sqlite3.Connection, path: Path = FIXTURE) -> tuple[int, i
             },
         )
 
-    set_meta(
-        conn,
-        source="fixture",
-        built_on=date.today().isoformat(),
-        corpus_tomos=str(data.get("corpus_tomos", "")),
-        note="Grafo mínimo: solo la cadena dorada. No es el corpus completo.",
-    )
+    add_source(conn, "fixture dorado anotado a mano")
+    stamp_provenance(conn)
     return len(data["rulings"]), len(data["edges"])
 
 
@@ -348,13 +434,9 @@ async def crawl(
                 edges,
             )
 
-    set_meta(
-        conn,
-        source="csjn-crawl",
-        built_on=date.today().isoformat(),
-        tomos=f"{volumes.start}-{volumes.stop - 1}",
-        note="Aristas sin clasificar: todas en 'mentioned' con confianza baja.",
-    )
+    set_meta(conn, tomos=f"{volumes.start}-{volumes.stop - 1}")
+    add_source(conn, "csjn-crawl")
+    stamp_provenance(conn)
     return rulings, edges
 
 
@@ -482,12 +564,8 @@ async def _ingest_one(
             },
         )
 
-    set_meta(
-        conn,
-        source="csjn-pipeline",
-        built_on=date.today().isoformat(),
-        note="Aristas con pasaje real y tratamiento clasificado por reglas.",
-    )
+    add_source(conn, "csjn-pipeline")
+    stamp_provenance(conn)
     conn.commit()
     log.info(
         "%s: %s citas, %s clasificadas por regla, %s en 'mentioned' de fallback",
@@ -624,12 +702,8 @@ async def classify_rulings(
                     edges,
                     failed,
                 )
-    set_meta(
-        conn,
-        source="csjn-pipeline",
-        built_on=date.today().isoformat(),
-        note="Aristas con pasaje real donde el fallo citante fue leído.",
-    )
+    add_source(conn, "csjn-pipeline")
+    stamp_provenance(conn)
     conn.commit()
     return done, edges, failed
 

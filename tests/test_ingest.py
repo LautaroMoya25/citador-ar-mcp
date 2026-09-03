@@ -12,9 +12,11 @@ from citador_ar_mcp.domain.citation import RulingId
 from citador_ar_mcp.domain.treatment import Opinion
 from citador_ar_mcp.ingest import ocr
 from citador_ar_mcp.ingest.build_graph import (
+    add_source,
     create_schema,
     done_volumes,
     mark_done,
+    stamp_provenance,
     store_sumario,
 )
 from citador_ar_mcp.ingest.citations import (
@@ -350,3 +352,90 @@ class TestPageRetry:
         with pytest.raises(httpx.HTTPStatusError):
             await csjn.page(620)
         assert csjn._client.calls == 1  # type: ignore[union-attr]
+
+
+class TestProvenance:
+    """What ``corpus_meta`` claims has to describe the file the reader has.
+
+    Each ingest step used to stamp its own ``source``, so whichever ran last
+    described the whole graph. A corpus crawled from twenty tomos and then topped
+    up with the golden fixture came out labelled ``fixture``, with a note reading
+    "solo la cadena dorada. No es el corpus completo" -- the one description that
+    makes five thousand real rulings look like a toy, and it was a command away
+    from being published on the release page.
+    """
+
+    def _graph(self, tmp_path: Path) -> sqlite3.Connection:
+        conn = sqlite3.connect(tmp_path / "g.db")
+        conn.execute("PRAGMA foreign_keys = ON")
+        create_schema(conn)
+        return conn
+
+    def _meta(self, conn: sqlite3.Connection) -> dict[str, str]:
+        return dict(conn.execute("SELECT key, value FROM corpus_meta"))
+
+    def test_a_later_step_does_not_erase_an_earlier_source(self, tmp_path: Path) -> None:
+        conn = self._graph(tmp_path)
+        add_source(conn, "csjn-crawl")
+        add_source(conn, "fixture dorado anotado a mano")
+        assert self._meta(conn)["source"] == "csjn-crawl + fixture dorado anotado a mano"
+
+    def test_the_same_step_run_twice_is_recorded_once(self, tmp_path: Path) -> None:
+        conn = self._graph(tmp_path)
+        add_source(conn, "csjn-pipeline")
+        add_source(conn, "csjn-pipeline")
+        assert self._meta(conn)["source"] == "csjn-pipeline"
+
+    def test_stub_nodes_are_counted_apart_from_crawled_rulings(self, tmp_path: Path) -> None:
+        """A cited precedent outside the crawled range is a node without a ruling.
+
+        Reporting the two together inflates the corpus: the published graph has
+        2.628 such stubs against 5.325 real ones, and they carry no text at all.
+        """
+        conn = self._graph(tmp_path)
+        me = RulingId.build(330, 100)
+        outside = RulingId.build(347, 688)
+        assert me is not None and outside is not None
+        store_sumario(conn, TestCrawlRobustness()._sumario((me, outside)))
+        mark_done(conn, 330)
+        stamp_provenance(conn)
+
+        note = self._meta(conn)["note"]
+        assert "1 fallos crawleados de los tomos 330-330" in note
+        assert "1 nodos stub" in note
+
+    def test_an_unclassified_edge_is_not_reported_as_a_neutral_one(self, tmp_path: Path) -> None:
+        conn = self._graph(tmp_path)
+        me = RulingId.build(330, 100)
+        outside = RulingId.build(347, 688)
+        assert me is not None and outside is not None
+        store_sumario(conn, TestCrawlRobustness()._sumario((me, outside)))
+        stamp_provenance(conn)
+
+        meta = self._meta(conn)
+        assert "0 de 1 aristas (0.0%)" in meta["cobertura_clasificacion"]
+        assert "no cita neutral verificada" in meta["cobertura_clasificacion"]
+        assert "0 de 1 aristas (0.0%)" in meta["cobertura_atribucion"]
+
+    def test_attribution_and_licence_survive_a_rebuild(self, tmp_path: Path) -> None:
+        """The contract requires the derived corpus to carry its attribution."""
+        conn = self._graph(tmp_path)
+        me = RulingId.build(330, 100)
+        outside = RulingId.build(347, 688)
+        assert me is not None and outside is not None
+        store_sumario(conn, TestCrawlRobustness()._sumario((me, outside)))
+        stamp_provenance(conn)
+
+        meta = self._meta(conn)
+        assert "CSJN" in meta["fuente_oficial"]
+        assert "sjconsulta" in meta["fuente_oficial"]
+        assert "MIT" in meta["licencia"]
+
+    def test_a_graph_with_no_crawl_says_it_is_not_the_whole_corpus(self, tmp_path: Path) -> None:
+        conn = self._graph(tmp_path)
+        me = RulingId.build(330, 100)
+        outside = RulingId.build(347, 688)
+        assert me is not None and outside is not None
+        store_sumario(conn, TestCrawlRobustness()._sumario((me, outside)))
+        stamp_provenance(conn)
+        assert "No es el corpus completo" in self._meta(conn)["note"]
