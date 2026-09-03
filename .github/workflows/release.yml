@@ -1,0 +1,46 @@
+# Publishes to PyPI through Trusted Publishing: PyPI verifies a short-lived
+# OIDC token issued by GitHub for this repository, so no API token exists to
+# leak, expire, or be committed by accident.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # The v0.1.0 tag already existed when this workflow was added, and a tag
+  # cannot be pushed twice. This is how that first release gets published.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Nothing reaches PyPI that has not passed the same gate as a normal push.
+  # A version on PyPI cannot be replaced, only yanked, so this runs first.
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # the OIDC claim PyPI checks; this is the whole mechanism
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build
+        run: uv build
+
+      # Refuses malformed metadata and a README that PyPI would not render,
+      # both of which are permanent once a version is up.
+      - name: Check the distributions
+        run: uv run --with twine twine check dist/*
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
