@@ -168,7 +168,8 @@ def stamp_provenance(conn: sqlite3.Connection) -> None:
     and only a fraction could be attributed to a vote -- and it is the attributed
     majority ones alone that can light the signal.
     """
-    one = lambda sql: int(conn.execute(sql).fetchone()[0])  # noqa: E731
+    def one(sql: str) -> int:
+        return int(conn.execute(sql).fetchone()[0])
 
     edges = one("SELECT count(*) FROM citations")
     if not edges:

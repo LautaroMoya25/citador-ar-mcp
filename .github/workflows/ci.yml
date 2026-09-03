@@ -39,8 +39,12 @@ jobs:
         with:
           enable-cache: true
 
+      # `llm` too, not just `ingest`: without it mypy cannot see the anthropic
+      # types, every `type: ignore` in ingest/llm.py reads as unused, and the
+      # type check ends up measuring a different program than the one that ships.
+      # `ocr` stays out -- it pulls Ghostscript and the pipeline does not need it.
       - name: Sync dependencies
-        run: uv sync --extra ingest --all-groups
+        run: uv sync --extra ingest --extra llm --all-groups
         env:
           UV_PYTHON: ${{ matrix.python-version }}
 
