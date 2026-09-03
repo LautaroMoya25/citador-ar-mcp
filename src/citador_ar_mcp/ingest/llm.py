@@ -36,7 +36,10 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Final
+from typing import TYPE_CHECKING, Final, cast
+
+if TYPE_CHECKING:
+    from anthropic.types import OutputConfigParam
 
 from pydantic import BaseModel, Field
 
@@ -226,6 +229,10 @@ class ClaudeTreatmentClassifier:
     system prompt is identical on every call, so it caches.
     """
 
+    #: `effort` is a typed literal in the SDK; keeping the annotation here means
+    #: a typo in a caller's string is caught by mypy rather than by a 400.
+    _EFFORTS: Final = ("low", "medium", "high", "xhigh", "max")
+
     def __init__(
         self,
         *,
@@ -266,7 +273,7 @@ class ClaudeTreatmentClassifier:
                     }
                 ],
                 thinking={"type": "adaptive"},
-                output_config={"effort": self._effort},
+                output_config=cast("OutputConfigParam", {"effort": self._effort}),
                 messages=[
                     {
                         "role": "user",
